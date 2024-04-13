@@ -1,287 +1,295 @@
 import "../style.css";
+import { vec2, vec4, mat4 } from "gl-matrix";
 
-import { initBuffers } from "./init-buffers.js";
-import { drawScene } from "./draw-scene.js";
+const settings = {
+  clearColor: [0.5, 0.5, 0.5, 1.0],
+  brushColor: [0.0, 0.0, 1.0, 1.0],
+  brushSize: 12.0,
+};
 
-let cubeRotation = 0.0;
-let deltaTime = 0;
-// will set to true when video can be copied to texture
-let copyVideo = false;
+const vert_src = `
+    attribute vec4 aVertexPos;
+    attribute vec2 aTextureCoord;
 
-main();
+    uniform mat4 uProjectionMat;
 
-//
-// start here
-//
+    varying highp vec2 vTextureCoord;
+
+    void main(void) {
+        gl_Position = uProjectionMat * aVertexPos;
+        // gl_Position = aVertexPos;
+        vTextureCoord = aTextureCoord;
+    }
+`;
+
+const frag_src = `
+    varying highp vec2 vTextureCoord;
+
+    uniform highp vec2 uExtent;
+    uniform highp vec2 uMousePos;
+    uniform highp vec4 uBrushColor;
+    uniform highp float uBrushSize;
+    uniform lowp int uMouseOver;
+
+    void main(void) {
+        highp vec2 texturePixelCoord = vTextureCoord * uExtent;
+        highp float mouseDistance = length(texturePixelCoord - uMousePos);
+
+        if (bool(uMouseOver) && mouseDistance < uBrushSize) {
+            gl_FragColor = uBrushColor;
+        } else {
+            gl_FragColor = vec4(vTextureCoord.xy, 0.0, 1.0);
+        }
+    }
+`;
+
+/**
+ * @typedef {Object} Locations
+ * @property {WebGLProgram} program
+ * @property {Object} attrib
+ * @property {number} attrib.vertexPos
+ * @property {number} attrib.textureCoord
+ * @property {Object} uniform
+ * @property {WebGLUniformLocation} uniform.projectionMat
+ * @property {WebGLUniformLocation} uniform.extent
+ * @property {WebGLUniformLocation} uniform.mousePos
+ * @property {WebGLUniformLocation} uniform.brushColor
+ * @property {WebGLUniformLocation} uniform.brushSize
+ * @property {WebGLUniformLocation} uniform.mouseOver
+ */
+
+/**
+ * @typedef {Object} Buffers
+ * @property {WebGLBuffer} position
+ * @property {WebGLBuffer} textureCoord
+ * @property {WebGLBuffer} index
+ */
+
+/**
+ * @typedef {Object} Uniforms
+ * @property {mat4} projectionMat
+ * @property {vec2} extent
+ * @property {vec2} mousePos
+ * @property {vec4} brushColor
+ * @property {number} brushSize
+ * @property {bool} uniform.mouseOver
+ */
+
 function main() {
+  /** @type {HTMLCanvasElement} */
   const canvas = document.querySelector("#canvas");
-  // Initialize the GL context
-  const gl = canvas.getContext("webgl");
+  if (!canvas) throw new Error("#canvas not found");
 
-  // Only continue if WebGL is available and working
-  if (gl === null) {
+  const canvasBox = document.querySelector("#canvas-box");
+  if (!canvas) throw new Error("#canvas-box not found");
+  canvas.width = canvasBox.clientWidth;
+  canvas.height = canvasBox.clientHeight;
+
+  const gl = canvas.getContext("webgl");
+  if (!gl) {
     alert(
-      "Unable to initialize WebGL. Your browser or machine may not support it.",
+      "Unable to initialize WebGL context. Your browser or machine may not support it",
     );
-    return;
+    throw new Error("unable to initialize webgl context");
   }
 
-  // Set clear color to black, fully opaque
-  gl.clearColor(0.5, 0.5, 0.5, 1.0);
-  // Clear the color buffer with specified clear color
+  gl.clearColor(...settings.clearColor);
   gl.clear(gl.COLOR_BUFFER_BIT);
 
-  // Vertex shader program
+  const vert = loadShader(gl, "vert", gl.VERTEX_SHADER, vert_src);
+  const frag = loadShader(gl, "frag", gl.FRAGMENT_SHADER, frag_src);
 
-  const vsSource = `
-  attribute vec4 aVertexPosition;
-  attribute vec3 aVertexNormal;
-  attribute vec2 aTextureCoord;
-
-  uniform mat4 uNormalMatrix;
-  uniform mat4 uModelViewMatrix;
-  uniform mat4 uProjectionMatrix;
-
-  varying highp vec2 vTextureCoord;
-  varying highp vec3 vLighting;
-
-  void main(void) {
-    gl_Position = uProjectionMatrix * uModelViewMatrix * aVertexPosition;
-    vTextureCoord = aTextureCoord;
-
-    // Apply lighting effect
-
-    highp vec3 ambientLight = vec3(0.3, 0.3, 0.3);
-    highp vec3 directionalLightColor = vec3(1, 1, 1);
-    highp vec3 directionalVector = normalize(vec3(0.85, 0.8, 0.75));
-
-    highp vec4 transformedNormal = uNormalMatrix * vec4(aVertexNormal, 1.0);
-
-    highp float directional = max(dot(transformedNormal.xyz, directionalVector), 0.0);
-    vLighting = ambientLight + (directionalLightColor * directional);
+  const program = gl.createProgram();
+  gl.attachShader(program, vert);
+  gl.attachShader(program, frag);
+  gl.linkProgram(program);
+  if (!gl.getProgramParameter(program, gl.LINK_STATUS)) {
+    throw new Error(
+      `Unable to initialize the shader program: ${gl.getProgramInfoLog(shaderProgram)}`,
+    );
   }
-`;
 
-  // Fragment shader program
-
-  const fsSource = `
-  varying highp vec2 vTextureCoord;
-  varying highp vec3 vLighting;
-
-  uniform sampler2D uSampler;
-
-  void main(void) {
-    highp vec4 texelColor = texture2D(uSampler, vTextureCoord);
-
-    gl_FragColor = vec4(texelColor.rgb * vLighting, texelColor.a);
-  }
-`;
-
-  // Initialize a shader program; this is where all the lighting
-  // for the vertices and so forth is established.
-  const shaderProgram = initShaderProgram(gl, vsSource, fsSource);
-
-  // Collect all the info needed to use the shader program.
-  // Look up which attributes our shader program is using
-  // for aVertexPosition, aVertexColor and also
-  // look up uniform locations.
+  /** @type {Locations} */
   const programInfo = {
-    program: shaderProgram,
-    attribLocations: {
-      vertexPosition: gl.getAttribLocation(shaderProgram, "aVertexPosition"),
-      vertexNormal: gl.getAttribLocation(shaderProgram, "aVertexNormal"),
-      textureCoord: gl.getAttribLocation(shaderProgram, "aTextureCoord"),
+    program,
+    attrib: {
+      vertexPos: gl.getAttribLocation(program, "aVertexPos"),
+      textureCoord: gl.getAttribLocation(program, "aTextureCoord"),
     },
-    uniformLocations: {
-      projectionMatrix: gl.getUniformLocation(
-        shaderProgram,
-        "uProjectionMatrix",
-      ),
-      modelViewMatrix: gl.getUniformLocation(shaderProgram, "uModelViewMatrix"),
-      normalMatrix: gl.getUniformLocation(shaderProgram, "uNormalMatrix"),
-      uSampler: gl.getUniformLocation(shaderProgram, "uSampler"),
+    uniform: {
+      projectionMat: gl.getUniformLocation(program, "uProjectionMat"),
+      extent: gl.getUniformLocation(program, "uExtent"),
+      mousePos: gl.getUniformLocation(program, "uMousePos"),
+      brushColor: gl.getUniformLocation(program, "uBrushColor"),
+      brushSize: gl.getUniformLocation(program, "uBrushSize"),
+      mouseOver: gl.getUniformLocation(program, "uMouseOver"),
     },
   };
 
-  // Here's where we call the routine that builds all the
-  // objects we'll be drawing.
-  const buffers = initBuffers(gl);
+  /** @type {Buffers} */
+  const buffers = {
+    position: gl.createBuffer(),
+    textureCoord: gl.createBuffer(),
+    index: gl.createBuffer(),
+  };
 
-  const texture = initTexture(gl);
-  const video = setupVideo("/Firefox.mp4");
+  gl.bindBuffer(gl.ARRAY_BUFFER, buffers.position);
+  // prettier-ignore
+  const positions = [
+    -1.0, -1.0, 0.0,
+    -1.0,  1.0, 0.0,
+     1.0,  1.0, 0.0,
+     1.0, -1.0, 0.0,
+  ];
+  gl.bufferData(gl.ARRAY_BUFFER, new Float32Array(positions), gl.STATIC_DRAW);
 
-  // Flip image pixels into the bottom-to-top order that WebGL expects.
-  gl.pixelStorei(gl.UNPACK_FLIP_Y_WEBGL, true);
+  gl.bindBuffer(gl.ARRAY_BUFFER, buffers.textureCoord);
+  // prettier-ignore
+  const texture_coords = [
+    0.0, 0.0,
+    0.0, 1.0,
+    1.0, 1.0,
+    1.0, 0.0,
+  ];
+  gl.bufferData(
+    gl.ARRAY_BUFFER,
+    new Float32Array(texture_coords),
+    gl.STATIC_DRAW,
+  );
 
-  let then = 0;
+  gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER, buffers.index);
+  // prettier-ignore
+  const indices = [
+    0, 1, 2,
+    2, 3, 0,
+  ];
+  gl.bufferData(
+    gl.ELEMENT_ARRAY_BUFFER,
+    new Uint16Array(indices),
+    gl.STATIC_DRAW,
+  );
 
-  // Draw the scene repeatedly
-  function render(now) {
-    now *= 0.001; // convert to seconds
-    deltaTime = now - then;
-    then = now;
+  /** @type {Uniforms} */
+  const uniforms = {
+    // prettier-ignore
+    projectionMat: [ 
+         1.0,  0.0,  0.0,  0.0,
+         0.0, -1.0,  0.0,  0.0,
+         0.0,  0.0,  1.0,  0.0,
+         0.0,  0.0,  0.0,  1.0,
+      ],
+    extent: [gl.canvas.width, gl.canvas.height],
+    mousePos: [-1000.0, -1000.0],
+    brushColor: settings.brushColor,
+    brushSize: settings.brushSize,
+  };
 
-    if (copyVideo) {
-      updateTexture(gl, texture, video);
-    }
+  window.addEventListener("resize", () => {
+    canvas.width = canvasBox.clientWidth;
+    canvas.height = canvasBox.clientHeight;
 
-    drawScene(gl, programInfo, buffers, texture, cubeRotation);
-    cubeRotation += deltaTime;
+    uniforms.extent[0] = gl.canvas.width;
+    uniforms.extent[1] = gl.canvas.height;
 
+    gl.viewport(0, 0, gl.canvas.width, gl.canvas.height);
+  });
+
+  gl.canvas.addEventListener("pointerover", (event) => {
+    uniforms.mouseOver = true;
+  });
+  gl.canvas.addEventListener("pointerout", (event) => {
+    uniforms.mouseOver = false;
+  });
+  gl.canvas.addEventListener("pointermove", (event) => {
+    /** @type {PointerEvent} e */
+    const e = event;
+
+    const rect = canvas.getBoundingClientRect();
+    uniforms.mousePos[0] = e.clientX - rect.x;
+    uniforms.mousePos[1] = e.clientY - rect.y;
+  });
+
+  let last_frame_ms = 0;
+  function render(current_frame_ms) {
+    const delta_ms = current_frame_ms - last_frame_ms;
+    last_frame_ms = current_frame_ms;
+
+    draw(gl, programInfo, buffers, uniforms);
     requestAnimationFrame(render);
   }
 
   requestAnimationFrame(render);
 }
 
-//
-// Initialize a shader program, so WebGL knows how to draw our data
-//
-function initShaderProgram(gl, vsSource, fsSource) {
-  const vertexShader = loadShader(gl, gl.VERTEX_SHADER, vsSource);
-  const fragmentShader = loadShader(gl, gl.FRAGMENT_SHADER, fsSource);
-
-  // Create the shader program
-
-  const shaderProgram = gl.createProgram();
-  gl.attachShader(shaderProgram, vertexShader);
-  gl.attachShader(shaderProgram, fragmentShader);
-  gl.linkProgram(shaderProgram);
-
-  // If creating the shader program failed, alert
-
-  if (!gl.getProgramParameter(shaderProgram, gl.LINK_STATUS)) {
-    alert(
-      `Unable to initialize the shader program: ${gl.getProgramInfoLog(
-        shaderProgram,
-      )}`,
-    );
-    return null;
-  }
-
-  return shaderProgram;
-}
-
-//
-// creates a shader of the given type, uploads the source and
-// compiles it.
-//
-function loadShader(gl, type, source) {
+/**
+ * @param {WebGLRenderingContext} gl
+ * @param {string} name
+ * @param {number} type
+ * @param {string} source
+ */
+function loadShader(gl, name, type, source) {
   const shader = gl.createShader(type);
-
-  // Send the source to the shader object
-
   gl.shaderSource(shader, source);
-
-  // Compile the shader program
-
   gl.compileShader(shader);
-
-  // See if it compiled successfully
-
   if (!gl.getShaderParameter(shader, gl.COMPILE_STATUS)) {
-    alert(
-      `An error occurred compiling the shaders: ${gl.getShaderInfoLog(shader)}`,
-    );
+    const info = gl.getShaderInfoLog(shader);
     gl.deleteShader(shader);
-    return null;
+    throw new Error(
+      `An error occurred compiling the shader '${name}': ${info}`,
+    );
   }
-
   return shader;
 }
 
-function initTexture(gl) {
-  const texture = gl.createTexture();
-  gl.bindTexture(gl.TEXTURE_2D, texture);
+/**
+ * @param {WebGLRenderingContext} gl
+ * @param {Locations} locations
+ * @param {Buffers} buffers
+ * @param {Uniforms} uniforms
+ */
+function draw(gl, locations, buffers, uniforms) {
+  gl.clear(gl.COLOR_BUFFER_BIT);
 
-  // Because video has to be download over the internet
-  // they might take a moment until it's ready so
-  // put a single pixel in the texture so we can
-  // use it immediately.
-  const level = 0;
-  const internalFormat = gl.RGBA;
-  const width = 1;
-  const height = 1;
-  const border = 0;
-  const srcFormat = gl.RGBA;
-  const srcType = gl.UNSIGNED_BYTE;
-  const pixel = new Uint8Array([0, 0, 255, 255]); // opaque blue
-  gl.texImage2D(
-    gl.TEXTURE_2D,
-    level,
-    internalFormat,
-    width,
-    height,
-    border,
-    srcFormat,
-    srcType,
-    pixel,
+  setAttributes(gl, locations, buffers);
+
+  gl.useProgram(locations.program);
+
+  gl.uniformMatrix4fv(
+    locations.uniform.projectionMat,
+    false,
+    uniforms.projectionMat,
   );
+  gl.uniform2fv(locations.uniform.extent, uniforms.extent);
+  gl.uniform2fv(locations.uniform.mousePos, uniforms.mousePos);
+  gl.uniform4fv(locations.uniform.brushColor, uniforms.brushColor);
+  gl.uniform1f(locations.uniform.brushSize, uniforms.brushSize);
+  gl.uniform1i(locations.uniform.mouseOver, uniforms.mouseOver);
 
-  // Turn off mips and set wrapping to clamp to edge so it
-  // will work regardless of the dimensions of the video.
-  gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE);
-  gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
-  gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR);
-
-  return texture;
+  gl.drawElements(gl.TRIANGLES, 6, gl.UNSIGNED_SHORT, 0);
 }
 
-function updateTexture(gl, texture, video) {
-  const level = 0;
-  const internalFormat = gl.RGBA;
-  const srcFormat = gl.RGBA;
-  const srcType = gl.UNSIGNED_BYTE;
-  gl.bindTexture(gl.TEXTURE_2D, texture);
-  gl.texImage2D(
-    gl.TEXTURE_2D,
-    level,
-    internalFormat,
-    srcFormat,
-    srcType,
-    video,
+/**
+ * @param {WebGLRenderingContext} gl
+ * @param {Locations} locations
+ * @param {Buffers} buffers
+ */
+function setAttributes(gl, locations, buffers) {
+  gl.bindBuffer(gl.ARRAY_BUFFER, buffers.position);
+  gl.vertexAttribPointer(locations.attrib.vertexPos, 3, gl.FLOAT, false, 0, 0);
+  gl.enableVertexAttribArray(locations.attrib.vertexPos);
+
+  gl.bindBuffer(gl.ARRAY_BUFFER, buffers.textureCoord);
+  gl.vertexAttribPointer(
+    locations.attrib.textureCoord,
+    2,
+    gl.FLOAT,
+    false,
+    0,
+    0,
   );
+  gl.enableVertexAttribArray(locations.attrib.textureCoord);
+
+  gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER, buffers.index);
 }
 
-function setupVideo(url) {
-  const video = document.createElement("video");
-
-  let playing = false;
-  let timeupdate = false;
-
-  video.playsInline = true;
-  video.muted = true;
-  video.loop = true;
-
-  // Waiting for these 2 events ensures
-  // there is data in the video
-
-  video.addEventListener(
-    "playing",
-    () => {
-      playing = true;
-      checkReady();
-    },
-    true,
-  );
-
-  video.addEventListener(
-    "timeupdate",
-    () => {
-      timeupdate = true;
-      checkReady();
-    },
-    true,
-  );
-
-  video.src = url;
-  video.play();
-
-  function checkReady() {
-    if (playing && timeupdate) {
-      copyVideo = true;
-    }
-  }
-
-  return video;
-}
+main();

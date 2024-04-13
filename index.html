@@ -7,13 +7,15 @@
     <title>Vite App</title>
     <script type="module" src="/src/main.js" defer></script>
   </head>
-  <body>
+  <body class="h-screen">
     <header id="header" class="h-12 w-full border-b bg-neutral-100 bg"></header>
-    <div class="flex flex-row grow">
-      <div id="tools-left" class="mr-auto w-64 border-r bg"></div>
-      <canvas id="canvas" class="border m-auto"></canvas>
-      <div id="tools-right" class="ml-auto w-64 border-l bg"></div>
+    <div class="flex flex-row flex-1 w-full overflow-clip">
+      <div id="tools-left" class="w-64 border-r bg"></div>
+      <div id="canvas-box" class="flex-1 overflow-clip">
+        <canvas id="canvas"></canvas>
+      </div>
+      <div id="tools-right" class="w-64 border-l bg"></div>
     </div>
-    <footer id="footer" class="h-12 w-full mt-auto border-t bg"></footer>
+    <footer id="footer" class="h-12 w-full border-t bg"></footer>
   </body>
 </html>
