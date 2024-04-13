@@ -1,0 +1,23 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  body {
+    @apply flex flex-col min-h-screen bg-dark;
+  }
+}
+
+@layer utilities {
+  .bg-light {
+    @apply bg-neutral-50;
+  }
+
+  .bg {
+    @apply bg-neutral-100;
+  }
+
+  .bg-dark {
+    @apply bg-neutral-200;
+  }
+}
