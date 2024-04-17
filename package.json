@@ -9,6 +9,7 @@
     "preview": "vite preview"
   },
   "devDependencies": {
+    "typescript": "^5.2.2",
     "autoprefixer": "^10.4.19",
     "gl-matrix": "^3.4.3",
     "postcss": "^8.4.38",
