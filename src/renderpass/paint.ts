@@ -1,5 +1,5 @@
 import { mat4 } from "gl-matrix";
-import { loadShader } from "./shared";
+import { TBuffers, TLocations, loadShader, v2, v3 } from "./shared";
 
 const vert_src = `
     attribute vec4 a_pos;
@@ -26,20 +26,10 @@ const frag_src = `
     }
 `;
 
-export type Locations = {
-  attrib: {
-    pos: number;
-    uv: number;
-  };
-  uniform: {
-    transform: WebGLUniformLocation;
-  };
-};
-
-export type Buffers = {
-  index: WebGLBuffer;
-  pos: WebGLBuffer;
-  uv: WebGLBuffer;
+export type Attributes = {
+  index: v3[];
+  pos: v3[];
+  uv: v2[];
 };
 
 export type Uniforms = {
@@ -50,7 +40,11 @@ export type Textures = {
   sampler: WebGLTexture;
 };
 
-export function createPaint(gl: WebGLRenderingContext) {
+export type Locations = TLocations<Attributes, Uniforms, Textures>;
+export type Buffers = TBuffers<Attributes>;
+export type Program = WebGLProgram;
+
+export function createProgram(gl: WebGLRenderingContext) {
   const vert = loadShader(gl, "vert", gl.VERTEX_SHADER, vert_src);
   const frag = loadShader(gl, "frag", gl.FRAGMENT_SHADER, frag_src);
 
@@ -64,68 +58,88 @@ export function createPaint(gl: WebGLRenderingContext) {
     );
   }
 
+  return program;
+}
+
+export function getLocations(
+  gl: WebGLRenderingContext,
+  program: Program,
+): Locations {
   const locations: Locations = {
-    attrib: {
+    attributes: {
+      index: -1,
       pos: gl.getAttribLocation(program, "a_pos")!,
       uv: gl.getAttribLocation(program, "a_uv")!,
     },
-    uniform: {
+    uniforms: {
       transform: gl.getUniformLocation(program, "u_transform")!,
     },
+    textures: {
+      sampler: gl.getUniformLocation(program, "u_sampler")!,
+    },
   };
+  gl.useProgram(program);
+  gl.uniform1i(locations.textures.sampler, 0);
+  return locations;
+}
 
-  const buffers: Buffers = {
-    index: gl.createBuffer()!,
-    pos: gl.createBuffer()!,
-    uv: gl.createBuffer()!,
-  };
+export function updateBuffers(
+  gl: WebGLRenderingContext,
+  attributes: Partial<Attributes>,
+  out_buffers: Buffers | null,
+): Buffers {
+  if (!out_buffers) {
+    out_buffers = {
+      index: gl.createBuffer()!,
+      pos: gl.createBuffer()!,
+      uv: gl.createBuffer()!,
+    };
+  }
 
-  gl.bindBuffer(gl.ARRAY_BUFFER, buffers.pos);
-  // prettier-ignore
-  let positions = [
-     [0.0,  0.0, 0.0],
-     [0.0,  1.0, 0.0],
-     [1.0,  1.0, 0.0],
-     [1.0,  0.0, 0.0],
-  ];
-  gl.bufferData(
-    gl.ARRAY_BUFFER,
-    new Float32Array(positions.flat()),
-    gl.STATIC_DRAW,
-  );
+  if (attributes.pos) {
+    gl.bindBuffer(gl.ARRAY_BUFFER, out_buffers.pos);
+    gl.bufferData(
+      gl.ARRAY_BUFFER,
+      new Float32Array(attributes.pos.flat()),
+      gl.STATIC_DRAW,
+    );
+  }
 
-  gl.bindBuffer(gl.ARRAY_BUFFER, buffers.uv);
-  // prettier-ignore
-  let texture_coords = [
-    [0.0, 0.0],
-    [0.0, 1.0],
-    [1.0, 1.0],
-    [1.0, 0.0],
-  ];
-  gl.bufferData(
-    gl.ARRAY_BUFFER,
-    new Float32Array(texture_coords.flat()),
-    gl.STATIC_DRAW,
-  );
+  if (attributes.uv) {
+    gl.bindBuffer(gl.ARRAY_BUFFER, out_buffers.uv);
+    gl.bufferData(
+      gl.ARRAY_BUFFER,
+      new Float32Array(attributes.uv.flat()),
+      gl.STATIC_DRAW,
+    );
+  }
 
-  gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER, buffers.index);
-  // prettier-ignore
-  let indices = [
-    [0, 1, 2],
-    [2, 3, 0]
-  ];
-  gl.bufferData(
-    gl.ELEMENT_ARRAY_BUFFER,
-    new Uint16Array(indices.flat()),
-    gl.STATIC_DRAW,
-  );
+  if (attributes.index) {
+    gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER, out_buffers.index);
+    gl.bufferData(
+      gl.ELEMENT_ARRAY_BUFFER,
+      new Uint16Array(attributes.index.flat()),
+      gl.STATIC_DRAW,
+    );
+  }
 
-  const uniforms: Uniforms = {
-    // prettier-ignore
-    transform: mat4.create(),
-  };
+  return out_buffers;
+}
 
-  return { program, locations, buffers, uniforms };
+export function updateUniforms(
+  gl: WebGLRenderingContext,
+  program: Program,
+  locations: Locations,
+  uniforms: Partial<Uniforms>,
+) {
+  gl.useProgram(program);
+  if (uniforms.transform) {
+    gl.uniformMatrix4fv(
+      locations.uniforms.transform,
+      false,
+      uniforms.transform,
+    );
+  }
 }
 
 export function draw(
@@ -133,7 +147,6 @@ export function draw(
   prg: WebGLProgram,
   loc: Locations,
   buf: Buffers,
-  uni: Uniforms,
   tex: Textures,
 ): void {
   gl.clearColor(0.0, 0.0, 0.0, 0.0);
@@ -145,16 +158,14 @@ export function draw(
   gl.bindTexture(gl.TEXTURE_2D, tex.sampler);
 
   gl.bindBuffer(gl.ARRAY_BUFFER, buf.pos);
-  gl.vertexAttribPointer(loc.attrib.pos, 3, gl.FLOAT, false, 0, 0);
-  gl.enableVertexAttribArray(loc.attrib.pos);
+  gl.vertexAttribPointer(loc.attributes.pos, 3, gl.FLOAT, false, 0, 0);
+  gl.enableVertexAttribArray(loc.attributes.pos);
 
   gl.bindBuffer(gl.ARRAY_BUFFER, buf.uv);
-  gl.vertexAttribPointer(loc.attrib.uv, 2, gl.FLOAT, false, 0, 0);
-  gl.enableVertexAttribArray(loc.attrib.uv);
+  gl.vertexAttribPointer(loc.attributes.uv, 2, gl.FLOAT, false, 0, 0);
+  gl.enableVertexAttribArray(loc.attributes.uv);
 
   gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER, buf.index);
-
-  gl.uniformMatrix4fv(loc.uniform.transform, false, uni.transform);
 
   gl.drawElements(gl.TRIANGLES, 6, gl.UNSIGNED_SHORT, 0);
 }

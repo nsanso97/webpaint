@@ -25,13 +25,36 @@ function main(): void {
     createTexture(gl, texExt.w, texExt.h),
   ];
   const fb = [createFramebuffer(gl, tex[0]), createFramebuffer(gl, tex[1])];
-  const pt = rp_paint.createPaint(gl);
+  const pt = {} as any;
+  pt.program = rp_paint.createProgram(gl);
+  pt.locations = rp_paint.getLocations(gl, pt.program);
+  pt.attr = {
+    index: [
+      [0, 1, 2],
+      [2, 3, 0],
+    ],
+    pos: [
+      [0.0, 0.0, 0.0],
+      [0.0, 1.0, 0.0],
+      [1.0, 1.0, 0.0],
+      [1.0, 0.0, 0.0],
+    ],
+    uv: [
+      [0.0, 0.0],
+      [0.0, 1.0],
+      [1.0, 1.0],
+      [1.0, 0.0],
+    ],
+  };
+  pt.buffers = rp_paint.updateBuffers(gl, pt.attr, pt.bufs);
+  pt.uniforms = {
+    transform: mat4.create(),
+  };
+  rp_paint.updateUniforms(gl, pt.program, pt.locations, pt.uniforms);
+
   const pr = {} as any;
   pr.program = rp_present.createProgram(gl);
   pr.locations = rp_present.getLocations(gl, pr.program);
-  pr.uniforms = {
-    transform: mat4.create(),
-  };
   pr.attr = {
     index: [
       [0, 1, 2],
@@ -51,6 +74,9 @@ function main(): void {
     ],
   };
   pr.bufs = rp_present.updateBuffers(gl, pr.attr, null);
+  pr.uniforms = {
+    transform: mat4.create(),
+  };
   rp_present.updateUniforms(gl, pr.program, pr.locations, pr.uniforms);
 
   window.addEventListener("resize", () => {
@@ -66,7 +92,7 @@ function main(): void {
 
     gl.bindFramebuffer(gl.FRAMEBUFFER, fb[fbIdx]);
     gl.viewport(0, 0, texExt.w, texExt.h);
-    rp_paint.draw(gl, pt.program, pt.locations, pt.buffers, pt.uniforms, {
+    rp_paint.draw(gl, pt.program, pt.locations, pt.buffers, {
       sampler: tex[fbIdx ^ 1],
     });
 
