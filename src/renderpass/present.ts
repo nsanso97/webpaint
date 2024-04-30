@@ -21,9 +21,7 @@ const frag_src = `
     uniform sampler2D u_sampler;
 
     void main(void) {
-        mediump vec4 sample_clr = texture2D(u_sampler, v_uv);
-        mediump vec3 emission = sample_clr.xyz * sample_clr.w + vec3(v_uv.y,0.0, v_uv.x) * (1.0 - sample_clr.w);
-        gl_FragColor = vec4(emission, 1.0);
+        gl_FragColor = texture2D(u_sampler, v_uv);
     }
 `;
 
@@ -151,7 +149,7 @@ export function draw(
   tex: Textures,
   triangleCount: number,
 ) {
-  gl.clearColor(0.0, 0.0, 0.0, 0.1);
+  gl.clearColor(0.0, 0.0, 0.0, 0.0);
   gl.clear(gl.COLOR_BUFFER_BIT);
 
   gl.useProgram(prg);
