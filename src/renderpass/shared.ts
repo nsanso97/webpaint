@@ -2,6 +2,22 @@ export type v2 = [number, number];
 export type v3 = [number, number, number];
 export type v4 = [number, number, number, number];
 
+export type TLocations<Attributes, Uniforms, Textures> = {
+  attributes: {
+    [key in keyof Attributes]: number;
+  };
+  uniforms: {
+    [key in keyof Uniforms]: WebGLUniformLocation;
+  };
+  textures: {
+    [key in keyof Textures]: WebGLUniformLocation;
+  };
+};
+
+export type TBuffers<Attributes> = {
+  [key in keyof Attributes]: WebGLBuffer;
+};
+
 export function loadShader(
   gl: WebGLRenderingContext,
   name: string,
