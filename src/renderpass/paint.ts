@@ -17,9 +17,12 @@ const vert_src = `
 
 const frag_src = `
     varying highp vec2  v_uv;
+    uniform sampler2D u_sampler;
 
     void main(void) {
-        gl_FragColor = vec4(v_uv.xy, 0.0, 1.0);
+        mediump vec4 sample_clr = texture2D(u_sampler, v_uv);
+        mediump vec3 emission = sample_clr.xyz * sample_clr.w + vec3(v_uv.xy, 0.0) * (1.0 - sample_clr.w);
+        gl_FragColor = vec4(emission, 1.0);
     }
 `;
 
@@ -41,6 +44,10 @@ export type Buffers = {
 
 export type Uniforms = {
   transform: mat4;
+};
+
+export type Textures = {
+  sampler: WebGLTexture;
 };
 
 export function createPaint(gl: WebGLRenderingContext) {
@@ -127,11 +134,15 @@ export function draw(
   loc: Locations,
   buf: Buffers,
   uni: Uniforms,
+  tex: Textures,
 ): void {
-  gl.clearColor(0.0, 0.5, 0.0, 0.5);
+  gl.clearColor(0.0, 0.0, 0.0, 0.0);
   gl.clear(gl.COLOR_BUFFER_BIT);
 
   gl.useProgram(prg);
+
+  gl.activeTexture(gl.TEXTURE0);
+  gl.bindTexture(gl.TEXTURE_2D, tex.sampler);
 
   gl.bindBuffer(gl.ARRAY_BUFFER, buf.pos);
   gl.vertexAttribPointer(loc.attrib.pos, 3, gl.FLOAT, false, 0, 0);

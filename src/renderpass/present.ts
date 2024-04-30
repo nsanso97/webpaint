@@ -48,10 +48,13 @@ export type Buffers = {
 
 export type Uniforms = {
   transform: mat4;
+};
+
+export type Textures = {
   sampler: WebGLTexture;
 };
 
-export function createPresent(gl: WebGLRenderingContext, tex: WebGLTexture) {
+export function createPresent(gl: WebGLRenderingContext) {
   const vert = loadShader(gl, "vert2", gl.VERTEX_SHADER, vert_src);
   const frag = loadShader(gl, "frag2", gl.FRAGMENT_SHADER, frag_src);
 
@@ -126,7 +129,6 @@ export function createPresent(gl: WebGLRenderingContext, tex: WebGLTexture) {
   const uniforms: Uniforms = {
     // prettier-ignore
     transform: mat4.create(),
-    sampler: tex,
   };
 
   return { program, locations, buffers, uniforms };
@@ -138,6 +140,7 @@ export function draw(
   loc: Locations,
   buf: Buffers,
   uni: Uniforms,
+  tex: Textures,
 ) {
   gl.clearColor(0.0, 0.0, 0.0, 0.1);
   gl.clear(gl.COLOR_BUFFER_BIT);
@@ -145,7 +148,7 @@ export function draw(
   gl.useProgram(prg);
 
   gl.activeTexture(gl.TEXTURE0);
-  gl.bindTexture(gl.TEXTURE_2D, uni.sampler);
+  gl.bindTexture(gl.TEXTURE_2D, tex.sampler);
 
   gl.bindBuffer(gl.ARRAY_BUFFER, buf.pos);
   gl.vertexAttribPointer(loc.attrib.pos, 3, gl.FLOAT, false, 0, 0);
