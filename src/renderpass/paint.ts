@@ -18,8 +18,9 @@ const vert_src = `
 
         v_uv = a_uv;
 
-        vec3 mouse_offset = vec3(u_mouse_pos - pos.xy, 1.0);
-        v_brush_uv = (u_mouse_offset_to_brush_uv * mouse_offset).xy;
+        vec3 mouse_offset = vec3(u_mouse_pos - a_uv, 1.0);
+        // v_brush_uv = (u_mouse_offset_to_brush_uv * mouse_offset).xy;
+        v_brush_uv = mouse_offset.xy;
     }
 `;
 
@@ -55,6 +56,7 @@ const frag_src = `
         // gl_FragColor = vec4(prem_out.w * prem_out.xyz, prem_out.w);
 
         gl_FragColor = vec4(v_brush_uv.xy, 0.0, 1.0);
+        // gl_FragColor = vec4(v_uv.xy, 0.0, 1.0);
     }
 `;
 
