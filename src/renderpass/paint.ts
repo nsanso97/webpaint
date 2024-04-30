@@ -148,6 +148,7 @@ export function draw(
   loc: Locations,
   buf: Buffers,
   tex: Textures,
+  triangleCount: number,
 ): void {
   gl.clearColor(0.0, 0.0, 0.0, 0.0);
   gl.clear(gl.COLOR_BUFFER_BIT);
@@ -167,5 +168,5 @@ export function draw(
 
   gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER, buf.index);
 
-  gl.drawElements(gl.TRIANGLES, 6, gl.UNSIGNED_SHORT, 0);
+  gl.drawElements(gl.TRIANGLES, triangleCount * 3, gl.UNSIGNED_SHORT, 0);
 }
