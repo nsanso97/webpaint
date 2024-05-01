@@ -5,12 +5,13 @@ const vert_src = `
     attribute vec4 a_pos;
     attribute vec2 a_uv;
 
-    uniform mat4 u_transform;
+    uniform mat4 u_view;
+    uniform mat4 u_proj;
 
     varying highp vec2 v_uv;
 
     void main(void) {
-        gl_Position = u_transform * a_pos;
+        gl_Position = u_proj * u_view * a_pos;
         v_uv = a_uv;
     }
 `;
@@ -32,7 +33,17 @@ export type Attributes = {
 };
 
 export type Uniforms = {
-  transform: mat4;
+  /**
+   * Transform from texel(0:Wt,0:Ht) to viewport(0:Wv,0:Hv)
+   *
+   * The viewport's Wv and Hv are equal to the canvas' Wc and Hc
+   * The transformation can scale, rotate and translate the texel
+   * space freely, meaning that the bounds of the 2 spaces do not
+   * need to match, but it should keep the correct texel aspect ratio
+   */
+  view: mat4;
+  /** Transform from viewport(0:Wv,0:Hv) to clip(-1:1,-1:1) */
+  proj: mat4;
 };
 
 export type Textures = {
@@ -71,7 +82,8 @@ export function getLocations(
       uv: gl.getAttribLocation(program, "a_uv")!,
     },
     uniforms: {
-      transform: gl.getUniformLocation(program, "u_transform")!,
+      view: gl.getUniformLocation(program, "u_view")!,
+      proj: gl.getUniformLocation(program, "u_proj")!,
     },
     textures: {
       sampler: gl.getUniformLocation(program, "u_sampler")!,
@@ -132,12 +144,12 @@ export function updateUniforms(
   uniforms: Partial<Uniforms>,
 ) {
   gl.useProgram(program);
-  if (uniforms.transform) {
-    gl.uniformMatrix4fv(
-      locations.uniforms.transform,
-      false,
-      uniforms.transform,
-    );
+
+  if (uniforms.view) {
+    gl.uniformMatrix4fv(locations.uniforms.view, false, uniforms.view);
+  }
+  if (uniforms.proj) {
+    gl.uniformMatrix4fv(locations.uniforms.proj, false, uniforms.proj);
   }
 }
 
@@ -168,4 +180,32 @@ export function draw(
   gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER, buf.index);
 
   gl.drawElements(gl.TRIANGLES, triangleCount * 3, gl.UNSIGNED_SHORT, 0);
+}
+
+/** NOTE: needs testing with user interaction
+ *
+ * @param scale scale at which to draw the original texels
+ * @param rotation radians
+ * @param translation in viewport units
+ * @returns out */
+export function makeViewMat(
+  out: mat4,
+  scale: number,
+  rotation: number,
+  translation: v2,
+): mat4 {
+  mat4.identity(out);
+  mat4.translate(out, out, [translation[0], translation[1], 0]); // 4: translate
+  mat4.rotate(out, out, rotation, [0, 0, 1]); // 3: rotate
+  mat4.scale(out, out, [scale, scale, 1]); // 2: scale
+  // mat4.translate(out, out, [textureExtent[0]/2, textureExtent[1]/2, 1]); // 1: center
+  return out;
+}
+
+/** @returns out */
+export function makeProjMat(out: mat4, canvasExtent: v2): mat4 {
+  mat4.identity(out);
+  mat4.translate(out, out, [-1, 1, 0]);
+  mat4.scale(out, out, [2 / canvasExtent[0], -2 / canvasExtent[1], 1]);
+  return out;
 }

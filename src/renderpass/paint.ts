@@ -1,11 +1,11 @@
-import { mat3, mat4 } from "gl-matrix";
+import { mat3 } from "gl-matrix";
 import { TBuffers, TLocations, loadShader, v2, v3, v4 } from "./shared";
 
 const vert_src = `
-    attribute vec4 a_pos;
     attribute vec2 a_uv;
 
-    uniform mat4 u_transform;
+    uniform mat3 u_view;
+    uniform mat3 u_proj;
     uniform vec2 u_mouse_pos;
     uniform mat3 u_mouse_offset_to_brush_uv;
 
@@ -13,14 +13,13 @@ const vert_src = `
     varying highp vec2 v_brush_uv;
 
     void main() {
-        vec4 pos = u_transform * a_pos;
-        gl_Position = pos;
-
         v_uv = a_uv;
+        vec3 pos2D = u_proj * u_view * vec3(a_uv, 1.0);
+        gl_Position = vec4(pos2D.xy, 0.0, pos2D.z);
 
-        vec3 mouse_offset = vec3(u_mouse_pos - a_uv, 1.0);
-        // v_brush_uv = (u_mouse_offset_to_brush_uv * mouse_offset).xy;
-        v_brush_uv = mouse_offset.xy;
+        vec3 texel_coord = u_view * vec3(a_uv, 1.0);
+        vec3 mouse_offset = vec3(u_mouse_pos - texel_coord.xy, 1.0);
+        v_brush_uv = (u_mouse_offset_to_brush_uv * mouse_offset).xy;
     }
 `;
 
@@ -29,7 +28,7 @@ const frag_src = `
     varying highp vec2 v_brush_uv;
 
     uniform sampler2D u_sampler;
-    // uniform sampler2D u_brush_sdf;
+    // TODO: uniform sampler2D u_brush_sdf;
     uniform mediump vec4 u_brush_color;
     uniform mediump float u_brush_softness;
 
@@ -39,8 +38,8 @@ const frag_src = `
         // mediump vec4 brush_sdf_clr = texture2D(u_brush_nd, v_brush_uv); // TODO after implementing SDF generation
 
         mediump float dist_to_circle = length(vec2(0.5, 0.5) - v_brush_uv);
-        mediump float circle_sdf = (dist_to_circle - 0.5) * 2.0;
-        mediump vec4 brush_sdf_clr = vec4(dist_to_circle, dist_to_circle, dist_to_circle, 1.0);
+        mediump float circle_sdf = -(dist_to_circle * 2.0 - 1.0);
+        mediump vec4 brush_sdf_clr = vec4(circle_sdf, circle_sdf, circle_sdf, 1.0);
 
         mediump vec4 brush_clr_factor = clamp(
             (1.0 / u_brush_softness) * brush_sdf_clr,
@@ -53,24 +52,31 @@ const frag_src = `
             prem_brush_clr.xyz + (1.0 - prem_brush_clr.w) * prem_original_clr.xyz,
             prem_brush_clr.w + (1.0 - prem_brush_clr.w) * prem_original_clr.w);
 
-        // gl_FragColor = vec4(prem_out.w * prem_out.xyz, prem_out.w);
+        gl_FragColor = vec4(prem_out.w * prem_out.xyz, prem_out.w);
 
-        gl_FragColor = vec4(v_brush_uv.xy, 0.0, 1.0);
-        // gl_FragColor = vec4(v_uv.xy, 0.0, 1.0);
+        // gl_FragColor = vec4(dist_to_circle * 0.01, 0.0, -dist_to_circle * 1000.0, 1.0);
     }
 `;
 
 export type Attributes = {
   index: v3[];
-  pos: v3[];
   uv: v2[];
 };
 
 export type Uniforms = {
-  transform: mat4;
+  /** Transform from uv(0:1,0:1) to texture(0:W,0:H) */
+  view: mat3;
+  /** Transform from texture(0:W,0:H) to clip(-1:1,-1:1) */
+  proj: mat3;
+  /** Mouse position in texure space(0:W,0:H) */
   mouse_pos: v2;
+  /** Transform from the 2D vector offset from the mouse
+   * position in texture space to the position in brush uv
+   * space used to sample to brush Signed Distance Field (SDF) */
   mouse_offset_to_brush_uv: mat3;
+  /** RGBA */
   brush_color: v4;
+  /** Range 0:1, with 0 being hardest and 1 being softest */
   brush_softness: number;
 };
 
@@ -106,11 +112,11 @@ export function getLocations(
   const locations: Locations = {
     attributes: {
       index: -1,
-      pos: gl.getAttribLocation(program, "a_pos")!,
       uv: gl.getAttribLocation(program, "a_uv")!,
     },
     uniforms: {
-      transform: gl.getUniformLocation(program, "u_transform")!,
+      view: gl.getUniformLocation(program, "u_view")!,
+      proj: gl.getUniformLocation(program, "u_proj")!,
       mouse_pos: gl.getUniformLocation(program, "u_mouse_pos")!,
       mouse_offset_to_brush_uv: gl.getUniformLocation(
         program,
@@ -137,18 +143,8 @@ export function updateBuffers(
   if (!out_buffers) {
     out_buffers = {
       index: gl.createBuffer()!,
-      pos: gl.createBuffer()!,
       uv: gl.createBuffer()!,
     };
-  }
-
-  if (attributes.pos) {
-    gl.bindBuffer(gl.ARRAY_BUFFER, out_buffers.pos);
-    gl.bufferData(
-      gl.ARRAY_BUFFER,
-      new Float32Array(attributes.pos.flat()),
-      gl.STATIC_DRAW,
-    );
   }
 
   if (attributes.uv) {
@@ -180,12 +176,11 @@ export function updateUniforms(
 ) {
   gl.useProgram(program);
 
-  if (uniforms.transform) {
-    gl.uniformMatrix4fv(
-      locations.uniforms.transform,
-      false,
-      uniforms.transform,
-    );
+  if (uniforms.view) {
+    gl.uniformMatrix3fv(locations.uniforms.view, false, uniforms.view);
+  }
+  if (uniforms.proj) {
+    gl.uniformMatrix3fv(locations.uniforms.proj, false, uniforms.proj);
   }
   if (uniforms.mouse_pos) {
     gl.uniform2fv(locations.uniforms.mouse_pos, uniforms.mouse_pos);
@@ -200,7 +195,7 @@ export function updateUniforms(
   if (uniforms.brush_color) {
     gl.uniform4fv(locations.uniforms.brush_color, uniforms.brush_color);
   }
-  if (uniforms.brush_softness) {
+  if (uniforms.brush_softness != undefined) {
     gl.uniform1f(locations.uniforms.brush_softness, uniforms.brush_softness);
   }
 }
@@ -221,10 +216,6 @@ export function draw(
   gl.activeTexture(gl.TEXTURE0);
   gl.bindTexture(gl.TEXTURE_2D, tex.sampler);
 
-  gl.bindBuffer(gl.ARRAY_BUFFER, buf.pos);
-  gl.vertexAttribPointer(loc.attributes.pos, 3, gl.FLOAT, false, 0, 0);
-  gl.enableVertexAttribArray(loc.attributes.pos);
-
   gl.bindBuffer(gl.ARRAY_BUFFER, buf.uv);
   gl.vertexAttribPointer(loc.attributes.uv, 2, gl.FLOAT, false, 0, 0);
   gl.enableVertexAttribArray(loc.attributes.uv);
@@ -232,4 +223,25 @@ export function draw(
   gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER, buf.index);
 
   gl.drawElements(gl.TRIANGLES, triangleCount * 3, gl.UNSIGNED_SHORT, 0);
+}
+
+/** @returns out */
+export function makeViewMat(out: mat3, textureExtent: v2): mat3 {
+  return mat3.fromScaling(out, textureExtent);
+}
+
+/** @returns out */
+export function makeProjMat(out: mat3, textureExtent: v2): mat3 {
+  mat3.fromTranslation(out, [-1, -1]);
+  mat3.scale(out, out, [2 / textureExtent[0], 2 / textureExtent[1]]);
+  return out;
+}
+
+/** @returns out */
+export function makeMouseToBrush(out: mat3, brushSize: number): mat3 {
+  const s = 1 / brushSize;
+  mat3.identity(out);
+  mat3.translate(out, out, [0.5, 0.5]);
+  mat3.scale(out, out, [s, s]);
+  return out;
 }

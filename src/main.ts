@@ -7,20 +7,17 @@ import { mat3, mat4, vec2 } from "gl-matrix";
 const settings = {
   paintExtent: [256, 256] as v2,
 
-  viewportScale: 1.0 / 256 / 2,
-  viewportRotation: 0.3,
-  viewportTranslation: [0.2, -0.4] as v2,
+  viewportScale: 1.0,
+  viewportRotation: 0.0,
+  viewportTranslation: [128.0, 128.0] as v2,
 
-  brushColor: [0.0, 0.0, 0.0, 1.0] as v4,
-  brushSize: 200.0,
-  brushSoftness: 0.1,
+  brushColor: [1.0, 0.0, 0.0, 1.0] as v4,
+  brushSize: 12.0,
+  brushSoftness: 0.0,
 
   pointerPos: [0, 0] as v2,
   pointerDown: false,
   pointerOver: false,
-
-  _pointerMatClipToViewport: mat3.create(),
-  _pointerMatClientToClip: mat3.create(),
 };
 
 type Context = {
@@ -43,15 +40,16 @@ type Context = {
     attributes: rp_present.Attributes;
     uniforms: rp_present.Uniforms;
   };
+
+  mouse: {
+    viewportToTexel: mat3;
+  };
 };
 
 function main(): void {
-  const gl = setupCanvas();
+  const gl = getWebGlContext();
   const ctx = setupContext(gl);
-  _initializePointerMats(
-    (gl.canvas as HTMLCanvasElement).getBoundingClientRect(),
-    ctx.present.uniforms.transform,
-  );
+  setupCanvas(gl, ctx);
   setupUserInputs(gl, ctx);
 
   let last_frame_ms = 0;
@@ -61,18 +59,18 @@ function main(): void {
 
     draw(gl, ctx);
 
-    ctx.frameIndex ^= 1;
+    if (settings.pointerDown) {
+      ctx.frameIndex ^= 1;
+    }
     requestAnimationFrame(render);
   }
   requestAnimationFrame(render);
 }
 
-function setupCanvas(): WebGLRenderingContext {
+function getWebGlContext(): WebGLRenderingContext {
   const canvas = document.querySelector("#canvas") as HTMLCanvasElement;
-
-  const canvasBox = document.querySelector("#canvas-box")!;
-  canvas.width = canvasBox.clientWidth;
-  canvas.height = canvasBox.clientHeight;
+  canvas.width = canvas.parentElement!.clientWidth;
+  canvas.height = canvas.parentElement!.clientHeight;
 
   const gl = canvas.getContext("webgl")!;
   if (!gl) {
@@ -81,19 +79,30 @@ function setupCanvas(): WebGLRenderingContext {
     );
     throw new Error("unable to initialize webgl context");
   }
+  return gl;
+}
+
+function setupCanvas(gl: WebGLRenderingContext, ctx: Context) {
+  const canvas = gl.canvas as HTMLCanvasElement;
 
   window.addEventListener("resize", () => {
-    canvas.width = canvasBox.clientWidth;
-    canvas.height = canvasBox.clientHeight;
+    canvas.width = canvas.parentElement!.clientWidth;
+    canvas.height = canvas.parentElement!.clientHeight;
 
-    _updatePointerMatClientToClip(canvas.getBoundingClientRect());
+    rp_present.makeProjMat(ctx.present.uniforms.proj, [
+      gl.canvas.width,
+      gl.canvas.height,
+    ]);
+    rp_present.updateUniforms(gl, ctx.present.program, ctx.present.locations, {
+      proj: ctx.present.uniforms.proj,
+    });
   });
 
   return gl;
 }
 
 function setupContext(gl: WebGLRenderingContext): Context {
-  const ctx: Context = { paint: {}, present: {} } as Context;
+  const ctx: Context = { paint: {}, present: {}, mouse: {} } as Context;
 
   ctx.frameIndex = 0;
 
@@ -113,12 +122,6 @@ function setupContext(gl: WebGLRenderingContext): Context {
       [0, 1, 2],
       [2, 3, 0],
     ],
-    pos: [
-      [-1.0, -1.0, 0.0],
-      [-1.0, 1.0, 0.0],
-      [1.0, 1.0, 0.0],
-      [1.0, -1.0, 0.0],
-    ],
     uv: [
       [0.0, 0.0],
       [0.0, 1.0],
@@ -128,9 +131,13 @@ function setupContext(gl: WebGLRenderingContext): Context {
   };
   paint.buffers = rp_paint.updateBuffers(gl, paint.attributes, null);
   paint.uniforms = {
-    transform: mat4.create(),
+    view: rp_paint.makeViewMat(mat3.create(), settings.paintExtent),
+    proj: rp_paint.makeProjMat(mat3.create(), settings.paintExtent),
     mouse_pos: [...settings.pointerPos],
-    mouse_offset_to_brush_uv: createMatMouseToBrush(mat3.create()),
+    mouse_offset_to_brush_uv: rp_paint.makeMouseToBrush(
+      mat3.create(),
+      settings.brushSize,
+    ),
     brush_color: [...settings.brushColor],
     brush_softness: settings.brushSoftness,
   };
@@ -159,7 +166,16 @@ function setupContext(gl: WebGLRenderingContext): Context {
   };
   present.buffers = rp_present.updateBuffers(gl, present.attributes, null);
   present.uniforms = {
-    transform: createPresentTransform(mat4.create()),
+    view: rp_present.makeViewMat(
+      mat4.create(),
+      settings.viewportScale,
+      settings.viewportRotation,
+      settings.viewportTranslation,
+    ),
+    proj: rp_present.makeProjMat(mat4.create(), [
+      gl.canvas.width,
+      gl.canvas.height,
+    ]),
   };
   rp_present.updateUniforms(
     gl,
@@ -167,68 +183,31 @@ function setupContext(gl: WebGLRenderingContext): Context {
     present.locations,
     present.uniforms,
   );
+
+  const mouse = ctx.mouse;
+  mouse.viewportToTexel = makeViewportToTexel(
+    mat3.create(),
+    present.uniforms.view,
+  );
   return ctx;
 }
 
-function createPresentTransform(out: mat4): mat4 {
-  const w = settings.paintExtent[0];
-  const h = settings.paintExtent[1];
-  const scale = settings.viewportScale * 2; // 2x as webgl's clip space is 2 units wide and tall
-  const rotation = settings.viewportRotation;
-  const traslation = settings.viewportTranslation;
+function makeViewportToTexel(out: mat3, texelToViewport: mat4): mat3 {
+  //copy by dropping Z coordinates
+  out[0] = texelToViewport[0];
+  out[1] = texelToViewport[1];
+  out[2] = texelToViewport[3];
 
-  // NOTE: For some crazy reason these apply in reverse order, meaning that the one
-  // furthest down is the first one to get applied. In other words, read from bottom to top
+  out[3] = texelToViewport[4];
+  out[4] = texelToViewport[5];
+  out[5] = texelToViewport[7];
 
-  out = mat4.translate(out, out, [traslation[0], traslation[1], 0]); // 4: translate
-  out = mat4.rotate(out, out, rotation, [0, 0, 1]); // 3: rotate
-  out = mat4.scale(out, out, [scale, scale, 1]); // 2: scale
-  out = mat4.translate(out, out, [-w / 2, -h / 2, 0]); // 1: center
+  out[6] = texelToViewport[12];
+  out[7] = texelToViewport[13];
+  out[8] = texelToViewport[15];
+
+  mat3.invert(out, out);
   return out;
-}
-
-function createMatMouseToBrush(out: mat3): mat3 {
-  out = mat3.fromTranslation(out, [-0.5, -0.5]);
-  out = mat3.scale(out, out, [settings.brushSize, settings.brushSize]);
-  return out;
-}
-
-function _updatePointerMatClientToClip(canvasRect: DOMRect) {
-  const clientToClip = settings._pointerMatClientToClip;
-  mat3.identity(clientToClip);
-  mat3.translate(clientToClip, clientToClip, [-1, 1]);
-  mat3.scale(clientToClip, clientToClip, [
-    2 / canvasRect.width,
-    -2 / canvasRect.height,
-  ]);
-}
-
-function _updatePointerMatClipToViewport(presentTransform: mat4) {
-  const ctv = settings._pointerMatClipToViewport;
-  // copy X Y W components from mat4 (skip Z)
-  ctv[0] = presentTransform[0];
-  ctv[1] = presentTransform[1];
-  ctv[2] = presentTransform[3];
-
-  ctv[3] = presentTransform[4];
-  ctv[4] = presentTransform[5];
-  ctv[5] = presentTransform[7];
-
-  ctv[6] = presentTransform[12];
-  ctv[7] = presentTransform[13];
-  ctv[8] = presentTransform[15];
-
-  // invert the present transformation
-  mat3.invert(ctv, ctv);
-
-  // scale by extent to get UV equivalent
-  const [w, h] = settings.paintExtent;
-  mat3.multiply(ctv, mat3.fromScaling(mat3.create(), [1 / w, 1 / h]), ctv); // I SWEAR TO GOD I'M GOING TO REWRITE THIS FUCKING LIBRARY
-}
-
-function _initializePointerMats(canvasRect: DOMRect, presentTransform: mat4) {
-  _updatePointerMatClientToClip(canvasRect);
-  _updatePointerMatClipToViewport(presentTransform);
 }
 
 function setupUserInputs(gl: WebGLRenderingContext, ctx: Context) {
@@ -279,19 +258,13 @@ function setupUserInputs(gl: WebGLRenderingContext, ctx: Context) {
     const v: vec2 = [...ctx.paint.uniforms.mouse_pos];
     console.log("------------------");
     console.log(v);
-    console.log(vec2.transformMat3(v, v, settings._pointerMatClientToClip));
-    console.log(vec2.transformMat3(v, v, settings._pointerMatClipToViewport));
+    console.log(vec2.transformMat3(v, v, ctx.mouse.viewportToTexel));
     console.log("------------------");
 
     vec2.transformMat3(
       ctx.paint.uniforms.mouse_pos,
       ctx.paint.uniforms.mouse_pos,
-      settings._pointerMatClientToClip,
-    );
-    vec2.transformMat3(
-      ctx.paint.uniforms.mouse_pos,
-      ctx.paint.uniforms.mouse_pos,
-      settings._pointerMatClipToViewport,
+      ctx.mouse.viewportToTexel,
     );
     rp_paint.updateUniforms(gl, ctx.paint.program, ctx.paint.locations, {
       mouse_pos: ctx.paint.uniforms.mouse_pos,
@@ -332,8 +305,9 @@ function setupUserInputs(gl: WebGLRenderingContext, ctx: Context) {
     const t = e.target as HTMLInputElement;
     settings.brushSize = +t.value;
 
-    ctx.paint.uniforms.mouse_offset_to_brush_uv = createMatMouseToBrush(
-      mat3.create(),
+    ctx.paint.uniforms.mouse_offset_to_brush_uv = rp_paint.makeMouseToBrush(
+      ctx.paint.uniforms.mouse_offset_to_brush_uv,
+      settings.brushSize,
     );
 
     rp_paint.updateUniforms(gl, ctx.paint.program, ctx.paint.locations, {

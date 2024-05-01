@@ -38,6 +38,15 @@ export function loadShader(
 }
 
 export function createTexture(gl: WebGLRenderingContext, w: number, h: number) {
+  const initialData = null;
+  // TODO:
+  // const initialData = new Uint8Array(w * h * 4);
+  // for (let i = 0; i < w * h; i++) {
+  //   initialData[i + 0] = 0xff; // R
+  //   initialData[i + 1] = 0xff; // G
+  //   initialData[i + 2] = 0xff; // B
+  //   initialData[i + 3] = 0xff; // A
+  // }
   const tex = gl.createTexture()!;
   gl.bindTexture(gl.TEXTURE_2D, tex);
   gl.texImage2D(
@@ -49,10 +58,10 @@ export function createTexture(gl: WebGLRenderingContext, w: number, h: number) {
     0,
     gl.RGBA,
     gl.UNSIGNED_BYTE,
-    null,
+    initialData,
   );
   gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR);
-  gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.LINEAR);
+  gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.NEAREST);
   gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE);
   gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
   return tex;
