@@ -39,7 +39,7 @@ const frag_src = `
 
         mediump float dist_to_circle = length(vec2(0.5, 0.5) - v_brush_uv);
         mediump float circle_sdf = -(dist_to_circle * 2.0 - 1.0);
-        mediump vec4 brush_sdf_clr = vec4(circle_sdf, circle_sdf, circle_sdf, 1.0);
+        mediump vec4 brush_sdf_clr = vec4(circle_sdf, circle_sdf, circle_sdf, circle_sdf);
 
         mediump vec4 brush_clr_factor = clamp(
             (1.0 / u_brush_softness) * brush_sdf_clr,
@@ -53,8 +53,6 @@ const frag_src = `
             prem_brush_clr.w + (1.0 - prem_brush_clr.w) * prem_original_clr.w);
 
         gl_FragColor = vec4(prem_out.w * prem_out.xyz, prem_out.w);
-
-        // gl_FragColor = vec4(dist_to_circle * 0.01, 0.0, -dist_to_circle * 1000.0, 1.0);
     }
 `;
 

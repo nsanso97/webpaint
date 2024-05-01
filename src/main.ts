@@ -7,13 +7,13 @@ import { mat3, mat4, vec2 } from "gl-matrix";
 const settings = {
   paintExtent: [256, 256] as v2,
 
-  viewportScale: 1.0,
+  viewportScale: 4.0,
   viewportRotation: 0.0,
-  viewportTranslation: [128.0, 128.0] as v2,
+  viewportTranslation: [0, 0] as v2,
 
   brushColor: [1.0, 0.0, 0.0, 1.0] as v4,
   brushSize: 12.0,
-  brushSoftness: 0.0,
+  brushSoftness: 0.1,
 
   pointerPos: [0, 0] as v2,
   pointerDown: false,
@@ -59,7 +59,7 @@ function main(): void {
 
     draw(gl, ctx);
 
-    if (settings.pointerDown) {
+    if (settings.pointerOver && settings.pointerDown) {
       ctx.frameIndex ^= 1;
     }
     requestAnimationFrame(render);
@@ -233,11 +233,14 @@ function setupUserInputs(gl: WebGLRenderingContext, ctx: Context) {
   inputBrushSize.value = settings.brushSize.toString();
   inputBrushSoftness.value = settings.brushSoftness.toString();
 
+  canvas.addEventListener("mouseup", (event) => event.preventDefault());
+  canvas.addEventListener("mousedown", (event) => event.preventDefault());
   canvas.addEventListener("pointerover", (_event) => {
     settings.pointerOver = true;
   });
   canvas.addEventListener("pointerout", (_event) => {
     settings.pointerOver = false;
+    settings.pointerDown = false;
   });
   canvas.addEventListener("pointerdown", (_event) => {
     settings.pointerDown = true;
@@ -254,12 +257,6 @@ function setupUserInputs(gl: WebGLRenderingContext, ctx: Context) {
 
     ctx.paint.uniforms.mouse_pos[0] = settings.pointerPos[0];
     ctx.paint.uniforms.mouse_pos[1] = settings.pointerPos[1];
-
-    const v: vec2 = [...ctx.paint.uniforms.mouse_pos];
-    console.log("------------------");
-    console.log(v);
-    console.log(vec2.transformMat3(v, v, ctx.mouse.viewportToTexel));
-    console.log("------------------");
 
     vec2.transformMat3(
       ctx.paint.uniforms.mouse_pos,
@@ -329,20 +326,26 @@ function setupUserInputs(gl: WebGLRenderingContext, ctx: Context) {
 }
 
 function draw(gl: WebGLRenderingContext, ctx: Context) {
-  gl.bindFramebuffer(gl.FRAMEBUFFER, ctx.framebuffers[ctx.frameIndex]);
-  const w = settings.paintExtent[0];
-  const h = settings.paintExtent[1];
-  gl.viewport(0, 0, w, h);
-  rp_paint.draw(
-    gl,
-    ctx.paint.program,
-    ctx.paint.locations,
-    ctx.paint.buffers,
-    {
-      sampler: ctx.textures[ctx.frameIndex ^ 1],
-    },
-    ctx.paint.attributes.index.length,
-  );
+  const renderIdx = ctx.frameIndex;
+  const sampleIdx = ctx.frameIndex ^ 1;
+  const presentIdx = settings.pointerOver ? renderIdx : sampleIdx;
+
+  if (settings.pointerOver) {
+    gl.bindFramebuffer(gl.FRAMEBUFFER, ctx.framebuffers[renderIdx]);
+    const w = settings.paintExtent[0];
+    const h = settings.paintExtent[1];
+    gl.viewport(0, 0, w, h);
+    rp_paint.draw(
+      gl,
+      ctx.paint.program,
+      ctx.paint.locations,
+      ctx.paint.buffers,
+      {
+        sampler: ctx.textures[sampleIdx],
+      },
+      ctx.paint.attributes.index.length,
+    );
+  }
 
   gl.bindFramebuffer(gl.FRAMEBUFFER, null);
   gl.viewport(0, 0, gl.canvas.width, gl.canvas.height);
@@ -352,7 +355,7 @@ function draw(gl: WebGLRenderingContext, ctx: Context) {
     ctx.present.locations,
     ctx.present.buffers,
     {
-      sampler: ctx.textures[ctx.frameIndex],
+      sampler: ctx.textures[presentIdx],
     },
     ctx.present.attributes.index.length,
   );

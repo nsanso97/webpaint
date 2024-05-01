@@ -39,13 +39,12 @@ export function loadShader(
 
 export function createTexture(gl: WebGLRenderingContext, w: number, h: number) {
   const initialData = null;
-  // TODO:
   // const initialData = new Uint8Array(w * h * 4);
   // for (let i = 0; i < w * h; i++) {
-  //   initialData[i + 0] = 0xff; // R
-  //   initialData[i + 1] = 0xff; // G
-  //   initialData[i + 2] = 0xff; // B
-  //   initialData[i + 3] = 0xff; // A
+  //   initialData[i * 4 + 0] = 0xff; // R
+  //   initialData[i * 4 + 1] = 0xff; // G
+  //   initialData[i * 4 + 2] = 0xff; // B
+  //   initialData[i * 4 + 3] = 0xff; // A
   // }
   const tex = gl.createTexture()!;
   gl.bindTexture(gl.TEXTURE_2D, tex);
