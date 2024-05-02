@@ -1,23 +1,32 @@
 import "../style.css";
-import { createFramebuffer, createTexture, v2, v4 } from "./renderpass/shared";
+import {
+    createFramebuffer,
+    createTexture,
+    v2,
+    v3,
+    v4,
+} from "./renderpass/shared";
 import * as rp_paint from "./renderpass/paint";
 import * as rp_present from "./renderpass/present";
 import { mat3, mat4, vec2 } from "gl-matrix";
 
 const settings = {
-    paintExtent: [256, 256] as v2,
+    paintExtent: [1024, 1024] as v2,
 
-    viewScale: 3.0,
+    viewScale: 1.0,
     viewRotation: 0.0,
     viewTranslation: [32, 32] as v2,
 
-    brushColor: [1.0, 0.0, 0.0, 0.5] as v4,
+    brushColor: [1.0, 0.0, 0.0] as v3,
+    brushFlow: 1.0,
     brushSize: 24.0,
     brushSoftness: 0.8,
 
     pointerPos: [0, 0] as v2,
     pointerDown: false,
     pointerOver: false,
+
+    maxSecondsToOpaque: 2,
 
     idle: false,
 };
@@ -203,8 +212,10 @@ function updateUniforms(
                 [-1, -1],
             ],
             mouse_offset_to_brush_uv: mat3.create(),
-            brush_color: [0, 0, 0, 0],
+            brush_color: [0, 0, 0],
+            brush_flow: 0,
             brush_softness: 0,
+            delta_ms: 0,
         };
     }
     rp_paint.makeViewMat(paint.uniforms.view, settings.paintExtent);
@@ -233,14 +244,14 @@ function updateUniforms(
         settings.brushSize,
     );
 
-    paint.uniforms.brush_color[0] =
-        settings.brushColor[0] * settings.brushColor[3];
-    paint.uniforms.brush_color[1] =
-        settings.brushColor[1] * settings.brushColor[3];
-    paint.uniforms.brush_color[2] =
-        settings.brushColor[2] * settings.brushColor[3];
-    paint.uniforms.brush_color[3] = settings.brushColor[3];
+    paint.uniforms.brush_color[0] = settings.brushColor[0];
+    paint.uniforms.brush_color[1] = settings.brushColor[1];
+    paint.uniforms.brush_color[2] = settings.brushColor[2];
+    paint.uniforms.brush_flow =
+        1 / settings.maxSecondsToOpaque / (1 - settings.brushFlow + 0.000001);
     paint.uniforms.brush_softness = settings.brushSoftness;
+    paint.uniforms.delta_ms = delta_ms;
+    console.log(paint.uniforms.brush_color, paint.uniforms.brush_flow);
 
     rp_present.updateUniforms(
         gl,
@@ -289,8 +300,8 @@ function setupUserInputs(canvas: HTMLCanvasElement) {
         .map((c) => Math.floor(c * 0xff))
         .slice(0, 3)
         .reduce((r, c) => r + c.toString(16).padStart(2, "0"), "#");
-    inputBrushFlow.value = settings.brushColor[3].toString();
     inputBrushSize.value = settings.brushSize.toString();
+    inputBrushFlow.value = settings.brushFlow.toString();
     inputBrushSoftness.value = settings.brushSoftness.toString();
 
     canvas.addEventListener("mouseup", (event) => event.preventDefault());
@@ -329,7 +340,7 @@ function setupUserInputs(canvas: HTMLCanvasElement) {
     inputBrushFlow.addEventListener("change", (event) => {
         const e = event as InputEvent;
         const t = e.target as HTMLInputElement;
-        settings.brushColor[3] = +t.value;
+        settings.brushFlow = +t.value;
     });
 
     inputBrushSize.addEventListener("change", (event) => {

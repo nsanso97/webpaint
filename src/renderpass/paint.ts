@@ -2,17 +2,22 @@ import { mat3 } from "gl-matrix";
 import { TBuffers, TLocations, loadShader, v2, v3, v4 } from "./shared";
 
 const vert_src = `
-    attribute vec2 a_uv;
+    #define N_MOUSE_POS 2
 
-    const int n_mouse_pos = 2;
+    attribute vec2 a_uv;
 
     uniform mat3 u_view;
     uniform mat3 u_proj;
-    uniform vec2 u_mouse_pos[n_mouse_pos];
+    uniform vec2 u_mouse_pos[N_MOUSE_POS];
     uniform mat3 u_mouse_offset_to_brush_uv;
 
-    varying highp vec2 v_uv;
-    varying highp vec2 v_brush_uv[n_mouse_pos];
+    #ifdef GL_FRAGMENT_PRECISION_HIGH
+        varying highp vec2 v_uv;
+        varying highp vec2 v_brush_uv[N_MOUSE_POS];
+    #else
+        varying highp vec2 v_uv;
+        varying highp vec2 v_brush_uv[N_MOUSE_POS];
+    #endif
 
     void main() {
         v_uv = a_uv;
@@ -20,7 +25,7 @@ const vert_src = `
         gl_Position = vec4(pos2D.xy, 0.0, pos2D.z);
 
         vec3 texel_coord = u_view * vec3(a_uv, 1.0);
-        for (int i = 0; i < n_mouse_pos; i++) {
+        for (int i = 0; i < N_MOUSE_POS; i++) {
             vec3 mouse_offset = vec3(u_mouse_pos[i] - texel_coord.xy, 1.0);
             v_brush_uv[i] = (u_mouse_offset_to_brush_uv * mouse_offset).xy;
         }
@@ -28,38 +33,71 @@ const vert_src = `
 `;
 
 const frag_src = `
-    const int n_mouse_pos = 2;
-    const int n_subsamples = 16;
+    #ifdef GL_FRAGMENT_PRECISION_HIGH
+        precision highp float;
+    #else
+        precision mediump float;
+    #endif
+ 
+    #define PI 3.1415926535897932384626433832795
+    #define N_MOUSE_POS 2
+    #define N_SUBSAMPLES 16
+    #define EPSILON 0.000001
+    #define TWO_THIRDS 0.66666666
+    #define MS_TO_S 0.001
 
-    varying highp vec2 v_uv;
-    varying highp vec2 v_brush_uv[n_mouse_pos];
+    varying vec2 v_uv;
+    varying vec2 v_brush_uv[N_MOUSE_POS];
 
     uniform sampler2D u_sampler;
     // TODO: uniform sampler2D u_brush_sdf;
-    uniform mediump vec4 u_brush_color;
-    uniform mediump float u_brush_softness;
-
-    const highp float eps = 0.000001; // epsilon, to prevent division by 0
+    uniform vec3 u_brush_color;
+    uniform float u_brush_flow;
+    uniform float u_brush_softness;
+    uniform float u_delta_ms;
 
     void main() {
-        mediump vec4 out_clr = texture2D(u_sampler, v_uv);
+        vec4 out_clr = texture2D(u_sampler, v_uv);
 
-        mediump float step = 1.0 / float(n_subsamples + 1);
+        float step = 1.0 / float(N_SUBSAMPLES);
+        float delta_ms = u_delta_ms / float(N_SUBSAMPLES);
 
-        for (int i = 0; i < n_subsamples; i++) {
-            mediump vec2 sample_uv = mix(v_brush_uv[0], v_brush_uv[1], step * float(i + 1));
+        // This formula comes from using a logistic function to approximate the geometric
+        // series formed by alpha blending the same color repeatedly.
+        //
+        // The exact logistic used is:
+        // $ (2 / (1 + e^(-kx))) - 1 $
+        //
+        // with $ k = u_brush_flow * 2 * PI $
+        // with $ u_brush_flow == 1 / seconds_to_full_opacity $
+        //
+        // It was confronted with the series: 
+        // $ alpha * sum[n = 0 : x * fps - 1]((1 - alpha)^n) $
+        //
+        // when $ alpha == 2/3 * k/fps == 2/3 * k * delta_s $ 
+        // the two functions where evaluated as close enough
+        float alpha = u_brush_flow * delta_ms * MS_TO_S * 2.0 * PI * TWO_THIRDS;
+        alpha = clamp(alpha, 0.0, 1.0);
 
-            // mediump vec4 brush_sdf_clr = texture2D(u_brush_nd, sample_uv); // TODO after implementing SDF generation
+        vec4 brush_clr = vec4(u_brush_color * alpha, alpha);
+        
+        // skip i == 0 as it points to the previous mouse position
+        for (int i = 1; i <= N_SUBSAMPLES; i++) {
+            vec2 sample_uv = mix(v_brush_uv[0], v_brush_uv[1], step * float(i));
 
-            mediump float dist_to_circle = length(vec2(0.5, 0.5) - sample_uv);
-            mediump float brush_sdf = -(dist_to_circle * 2.0 - 1.0);
+            // TODO after implementing SDF generation
+            // vec4 brush_sdf_clr = texture2D(u_brush_nd, sample_uv); 
 
-            mediump float brush_alpha = clamp(
-                1.0 / (u_brush_softness + eps) * brush_sdf,
+            float dist_to_circle = length(vec2(0.5, 0.5) - sample_uv);
+            float brush_sdf = -(dist_to_circle * 2.0 - 1.0);
+
+            float brush_alpha = clamp(
+                1.0 / (u_brush_softness + EPSILON) * brush_sdf,
                 0.0, 1.0);
+            brush_alpha = brush_alpha * brush_alpha; // squaring for even softer edges
 
-            mediump vec4 brush_clr = u_brush_color * brush_alpha;
-            out_clr = brush_clr + (1.0 - brush_clr.w) * out_clr;
+            vec4 sample_clr = brush_clr * brush_alpha;
+            out_clr = sample_clr + (1.0 - sample_clr.w) * out_clr;
         }
         gl_FragColor = out_clr;
     }
@@ -82,9 +120,13 @@ export type Uniforms = {
      * space used to sample to brush Signed Distance Field (SDF) */
     mouse_offset_to_brush_uv: mat3;
     /** RGBA premuliplied */
-    brush_color: v4;
+    brush_color: v3;
+    /** inverse of the time in seconds needed to reach full opacity */
+    brush_flow: number;
     /** Range 0:1, with 0 being hardest and 1 being softest */
     brush_softness: number;
+    /** Delta time from last frame */
+    delta_ms: number;
 };
 
 export type Textures = {
@@ -130,7 +172,9 @@ export function getLocations(
                 "u_mouse_offset_to_brush_uv",
             )!,
             brush_color: gl.getUniformLocation(program, "u_brush_color")!,
+            brush_flow: gl.getUniformLocation(program, "u_brush_flow")!,
             brush_softness: gl.getUniformLocation(program, "u_brush_softness")!,
+            delta_ms: gl.getUniformLocation(program, "u_delta_ms")!,
         },
         textures: {
             sampler: gl.getUniformLocation(program, "u_sampler")!,
@@ -200,13 +244,19 @@ export function updateUniforms(
         );
     }
     if (uniforms.brush_color) {
-        gl.uniform4fv(locations.uniforms.brush_color, uniforms.brush_color);
+        gl.uniform3fv(locations.uniforms.brush_color, uniforms.brush_color);
+    }
+    if (uniforms.brush_flow != undefined) {
+        gl.uniform1f(locations.uniforms.brush_flow, uniforms.brush_flow);
     }
     if (uniforms.brush_softness != undefined) {
         gl.uniform1f(
             locations.uniforms.brush_softness,
             uniforms.brush_softness,
         );
+    }
+    if (uniforms.delta_ms != undefined) {
+        gl.uniform1f(locations.uniforms.delta_ms, uniforms.delta_ms);
     }
 }
 

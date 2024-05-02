@@ -1,10 +1,8 @@
 # TODO
 
-## PAINT: normalize flow with respect to time
+## MAYBE: PAINT: normalize flow with respect to movement
 
-1 sec for x% flow to get to 100% opacity.
-Find x value through experimentation.
-Find scaling function for flow by studying the integration of repeated applications of the brush color and alpha.
+add as an option
 
 ## PRESENT: add border to paint area
 
