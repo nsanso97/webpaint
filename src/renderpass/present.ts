@@ -34,15 +34,15 @@ export type Attributes = {
 
 export type Uniforms = {
   /**
-   * Transform from texel(0:Wt,0:Ht) to viewport(0:Wv,0:Hv)
+   * Transform from texel(0:Wt,0:Ht) to view(0:Wv,0:Hv)
    *
-   * The viewport's Wv and Hv are equal to the canvas' Wc and Hc
+   * The view's Wv and Hv are equal to the canvas' Wc and Hc
    * The transformation can scale, rotate and translate the texel
    * space freely, meaning that the bounds of the 2 spaces do not
    * need to match, but it should keep the correct texel aspect ratio
    */
   view: mat4;
-  /** Transform from viewport(0:Wv,0:Hv) to clip(-1:1,-1:1) */
+  /** Transform from view(0:Wv,0:Hv) to clip(-1:1,-1:1) */
   proj: mat4;
 };
 
@@ -161,7 +161,7 @@ export function draw(
   tex: Textures,
   triangleCount: number,
 ) {
-  gl.clearColor(0.0, 0.0, 0.0, 0.0);
+  gl.clearColor(0.0, 0.0, 0.0, 0.1);
   gl.clear(gl.COLOR_BUFFER_BIT);
 
   gl.useProgram(prg);
@@ -186,7 +186,7 @@ export function draw(
  *
  * @param scale scale at which to draw the original texels
  * @param rotation radians
- * @param translation in viewport units
+ * @param translation in view units
  * @returns out */
 export function makeViewMat(
   out: mat4,

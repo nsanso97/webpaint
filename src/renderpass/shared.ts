@@ -41,10 +41,10 @@ export function createTexture(gl: WebGLRenderingContext, w: number, h: number) {
   const initialData = null;
   // const initialData = new Uint8Array(w * h * 4);
   // for (let i = 0; i < w * h; i++) {
-  //   initialData[i * 4 + 0] = 0xff; // R
-  //   initialData[i * 4 + 1] = 0xff; // G
-  //   initialData[i * 4 + 2] = 0xff; // B
-  //   initialData[i * 4 + 3] = 0xff; // A
+  //   initialData[i * 4 + 0] = 0x00; // R
+  //   initialData[i * 4 + 1] = 0x00; // G
+  //   initialData[i * 4 + 2] = 0x00; // B
+  //   initialData[i * 4 + 3] = 0x00; // A
   // }
   const tex = gl.createTexture()!;
   gl.bindTexture(gl.TEXTURE_2D, tex);

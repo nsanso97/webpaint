@@ -32,6 +32,8 @@ const frag_src = `
     uniform mediump vec4 u_brush_color;
     uniform mediump float u_brush_softness;
 
+    const highp float eps = 0.000001; // epsilon, to prevent division by 0
+
     void main() {
         mediump vec4 original_clr = texture2D(u_sampler, v_uv);
 
@@ -41,18 +43,12 @@ const frag_src = `
         mediump float brush_sdf = -(dist_to_circle * 2.0 - 1.0);
 
         mediump float brush_alpha = clamp(
-            (1.0 / u_brush_softness) * brush_sdf,
+            1.0 / (u_brush_softness + eps) * brush_sdf,
             0.0, 1.0);
-        brush_alpha =  brush_alpha * u_brush_color.w;
 
-        // pm_* stands for pre-multiplied alpha
-        mediump vec3 pm_brush_clr = u_brush_color.xyz * brush_alpha;
-        mediump vec3 pm_original_clr = original_clr.xyz * original_clr.w;
-
-        mediump vec3 pm_frag_clr = pm_brush_clr + (1.0 - brush_alpha) * pm_original_clr;
-        mediump float frag_alpha = brush_alpha + (1.0 - brush_alpha) * original_clr.w;
-
-        gl_FragColor = vec4(1.0/frag_alpha * pm_frag_clr, frag_alpha);
+        mediump vec4 brush_clr = vec4(u_brush_color.xyz * u_brush_color.w, u_brush_color.w);
+        brush_clr = brush_clr * brush_alpha;
+        gl_FragColor = brush_clr + (1.0 - brush_clr.w) * original_clr;
     }
 `;
 

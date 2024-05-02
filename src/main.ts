@@ -7,9 +7,9 @@ import { mat3, mat4, vec2 } from "gl-matrix";
 const settings = {
   paintExtent: [256, 256] as v2,
 
-  viewportScale: 4.0,
-  viewportRotation: 0.0,
-  viewportTranslation: [0, 0] as v2,
+  viewScale: 3.0,
+  viewRotation: 0.0,
+  viewTranslation: [32, 32] as v2,
 
   brushColor: [1.0, 0.0, 0.0, 1.0] as v4,
   brushSize: 12.0,
@@ -42,7 +42,7 @@ type Context = {
   };
 
   mouse: {
-    viewportToTexel: mat3;
+    viewToTexel: mat3;
   };
 };
 
@@ -168,9 +168,9 @@ function setupContext(gl: WebGLRenderingContext): Context {
   present.uniforms = {
     view: rp_present.makeViewMat(
       mat4.create(),
-      settings.viewportScale,
-      settings.viewportRotation,
-      settings.viewportTranslation,
+      settings.viewScale,
+      settings.viewRotation,
+      settings.viewTranslation,
     ),
     proj: rp_present.makeProjMat(mat4.create(), [
       gl.canvas.width,
@@ -185,26 +185,23 @@ function setupContext(gl: WebGLRenderingContext): Context {
   );
 
   const mouse = ctx.mouse;
-  mouse.viewportToTexel = makeViewportToTexel(
-    mat3.create(),
-    present.uniforms.view,
-  );
+  mouse.viewToTexel = makeViewToTexel(mat3.create(), present.uniforms.view);
   return ctx;
 }
 
-function makeViewportToTexel(out: mat3, texelToViewport: mat4): mat3 {
+function makeViewToTexel(out: mat3, texelToView: mat4): mat3 {
   //copy by dropping Z coordinates
-  out[0] = texelToViewport[0];
-  out[1] = texelToViewport[1];
-  out[2] = texelToViewport[3];
+  out[0] = texelToView[0];
+  out[1] = texelToView[1];
+  out[2] = texelToView[3];
 
-  out[3] = texelToViewport[4];
-  out[4] = texelToViewport[5];
-  out[5] = texelToViewport[7];
+  out[3] = texelToView[4];
+  out[4] = texelToView[5];
+  out[5] = texelToView[7];
 
-  out[6] = texelToViewport[12];
-  out[7] = texelToViewport[13];
-  out[8] = texelToViewport[15];
+  out[6] = texelToView[12];
+  out[7] = texelToView[13];
+  out[8] = texelToView[15];
 
   mat3.invert(out, out);
   return out;
@@ -215,8 +212,8 @@ function setupUserInputs(gl: WebGLRenderingContext, ctx: Context) {
   const inputBrushColor = document.querySelector(
     "#brush-color",
   ) as HTMLInputElement;
-  const inputBrushOpacity = document.querySelector(
-    "#brush-opacity",
+  const inputBrushFlow = document.querySelector(
+    "#brush-flow",
   ) as HTMLInputElement;
   const inputBrushSize = document.querySelector(
     "#brush-size",
@@ -229,7 +226,7 @@ function setupUserInputs(gl: WebGLRenderingContext, ctx: Context) {
     .map((c) => Math.floor(c * 0xff))
     .slice(0, 3)
     .reduce((r, c) => r + c.toString(16).padStart(2, "0"), "#");
-  inputBrushOpacity.value = settings.brushColor[3].toString();
+  inputBrushFlow.value = settings.brushColor[3].toString();
   inputBrushSize.value = settings.brushSize.toString();
   inputBrushSoftness.value = settings.brushSoftness.toString();
 
@@ -261,7 +258,7 @@ function setupUserInputs(gl: WebGLRenderingContext, ctx: Context) {
     vec2.transformMat3(
       ctx.paint.uniforms.mouse_pos,
       ctx.paint.uniforms.mouse_pos,
-      ctx.mouse.viewportToTexel,
+      ctx.mouse.viewToTexel,
     );
     rp_paint.updateUniforms(gl, ctx.paint.program, ctx.paint.locations, {
       mouse_pos: ctx.paint.uniforms.mouse_pos,
@@ -285,7 +282,7 @@ function setupUserInputs(gl: WebGLRenderingContext, ctx: Context) {
     });
   });
 
-  inputBrushOpacity.addEventListener("change", (event) => {
+  inputBrushFlow.addEventListener("change", (event) => {
     const e = event as InputEvent;
     const t = e.target as HTMLInputElement;
     settings.brushColor[3] = +t.value;
