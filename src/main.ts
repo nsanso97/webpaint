@@ -27,6 +27,7 @@ const settings = {
     pointerOver: false,
 
     maxSecondsToOpaque: 2,
+    viewScaleExpBase: 16,
 
     idle: false,
 };
@@ -68,13 +69,14 @@ function main(): void {
         const delta_ms = current_frame_ms - last_frame_ms;
         last_frame_ms = current_frame_ms;
 
-        if (settings.pointerOver && settings.pointerDown) {
-            ctx.frameIndex ^= 1;
-        }
-
         if (!settings.idle) {
             updateUniforms(gl, ctx, delta_ms);
             draw(gl, ctx);
+
+            if (settings.pointerOver && settings.pointerDown) {
+                ctx.frameIndex ^= 1;
+            }
+
             settings.idle = true;
         }
 
@@ -326,7 +328,10 @@ function setupUserInputs(canvas: HTMLCanvasElement) {
     inputY.max = (settings.paintExtent[1] / 2).toString();
     inputX.value = settings.viewTranslation[1].toString();
 
-    inputScale.value = settings.viewScale.toString();
+    inputScale.value = (
+        Math.log(settings.viewScale) / Math.log(settings.viewScaleExpBase) +
+        1
+    ).toString();
     inputRotation.value = (settings.viewRotation / Math.PI).toString();
 
     inputX.addEventListener("input", (event) => {
@@ -345,7 +350,7 @@ function setupUserInputs(canvas: HTMLCanvasElement) {
         settings.idle = false;
         const e = event as InputEvent;
         const t = e.target as HTMLInputElement;
-        settings.viewScale = +t.value;
+        settings.viewScale = Math.pow(settings.viewScaleExpBase, +t.value - 1);
     });
     inputRotation.addEventListener("input", (event) => {
         settings.idle = false;
