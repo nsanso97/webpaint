@@ -4,13 +4,15 @@ import { TBuffers, TLocations, loadShader, v2, v3, v4 } from "./shared";
 const vert_src = `
     attribute vec2 a_uv;
 
+    const int n_mouse_pos = 2;
+
     uniform mat3 u_view;
     uniform mat3 u_proj;
-    uniform vec2 u_mouse_pos;
+    uniform vec2 u_mouse_pos[n_mouse_pos];
     uniform mat3 u_mouse_offset_to_brush_uv;
 
     varying highp vec2 v_uv;
-    varying highp vec2 v_brush_uv;
+    varying highp vec2 v_brush_uv[n_mouse_pos];
 
     void main() {
         v_uv = a_uv;
@@ -18,14 +20,19 @@ const vert_src = `
         gl_Position = vec4(pos2D.xy, 0.0, pos2D.z);
 
         vec3 texel_coord = u_view * vec3(a_uv, 1.0);
-        vec3 mouse_offset = vec3(u_mouse_pos - texel_coord.xy, 1.0);
-        v_brush_uv = (u_mouse_offset_to_brush_uv * mouse_offset).xy;
+        for (int i = 0; i < n_mouse_pos; i++) {
+            vec3 mouse_offset = vec3(u_mouse_pos[i] - texel_coord.xy, 1.0);
+            v_brush_uv[i] = (u_mouse_offset_to_brush_uv * mouse_offset).xy;
+        }
     }
 `;
 
 const frag_src = `
+    const int n_mouse_pos = 2;
+    const int n_subsamples = 16;
+
     varying highp vec2 v_uv;
-    varying highp vec2 v_brush_uv;
+    varying highp vec2 v_brush_uv[n_mouse_pos];
 
     uniform sampler2D u_sampler;
     // TODO: uniform sampler2D u_brush_sdf;
@@ -35,20 +42,26 @@ const frag_src = `
     const highp float eps = 0.000001; // epsilon, to prevent division by 0
 
     void main() {
-        mediump vec4 original_clr = texture2D(u_sampler, v_uv);
+        mediump vec4 out_clr = texture2D(u_sampler, v_uv);
 
-        // mediump vec4 brush_sdf_clr = texture2D(u_brush_nd, v_brush_uv); // TODO after implementing SDF generation
+        mediump float step = 1.0 / float(n_subsamples + 1);
 
-        mediump float dist_to_circle = length(vec2(0.5, 0.5) - v_brush_uv);
-        mediump float brush_sdf = -(dist_to_circle * 2.0 - 1.0);
+        for (int i = 0; i < n_subsamples; i++) {
+            mediump vec2 sample_uv = mix(v_brush_uv[0], v_brush_uv[1], step * float(i + 1));
 
-        mediump float brush_alpha = clamp(
-            1.0 / (u_brush_softness + eps) * brush_sdf,
-            0.0, 1.0);
+            // mediump vec4 brush_sdf_clr = texture2D(u_brush_nd, sample_uv); // TODO after implementing SDF generation
 
-        mediump vec4 brush_clr = vec4(u_brush_color.xyz * u_brush_color.w, u_brush_color.w);
-        brush_clr = brush_clr * brush_alpha;
-        gl_FragColor = brush_clr + (1.0 - brush_clr.w) * original_clr;
+            mediump float dist_to_circle = length(vec2(0.5, 0.5) - sample_uv);
+            mediump float brush_sdf = -(dist_to_circle * 2.0 - 1.0);
+
+            mediump float brush_alpha = clamp(
+                1.0 / (u_brush_softness + eps) * brush_sdf,
+                0.0, 1.0);
+
+            mediump vec4 brush_clr = u_brush_color * brush_alpha;
+            out_clr = brush_clr + (1.0 - brush_clr.w) * out_clr;
+        }
+        gl_FragColor = out_clr;
     }
 `;
 
@@ -63,12 +76,12 @@ export type Uniforms = {
   /** Transform from texture(0:W,0:H) to clip(-1:1,-1:1) */
   proj: mat3;
   /** Mouse position in texure space(0:W,0:H) */
-  mouse_pos: v2;
+  mouse_pos: [v2, v2];
   /** Transform from the 2D vector offset from the mouse
    * position in texture space to the position in brush uv
    * space used to sample to brush Signed Distance Field (SDF) */
   mouse_offset_to_brush_uv: mat3;
-  /** RGBA */
+  /** RGBA premuliplied */
   brush_color: v4;
   /** Range 0:1, with 0 being hardest and 1 being softest */
   brush_softness: number;
@@ -177,7 +190,7 @@ export function updateUniforms(
     gl.uniformMatrix3fv(locations.uniforms.proj, false, uniforms.proj);
   }
   if (uniforms.mouse_pos) {
-    gl.uniform2fv(locations.uniforms.mouse_pos, uniforms.mouse_pos);
+    gl.uniform2fv(locations.uniforms.mouse_pos, uniforms.mouse_pos.flat());
   }
   if (uniforms.mouse_offset_to_brush_uv) {
     gl.uniformMatrix3fv(

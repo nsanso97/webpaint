@@ -11,13 +11,15 @@ const settings = {
   viewRotation: 0.0,
   viewTranslation: [32, 32] as v2,
 
-  brushColor: [1.0, 0.0, 0.0, 1.0] as v4,
-  brushSize: 12.0,
-  brushSoftness: 0.1,
+  brushColor: [1.0, 0.0, 0.0, 0.5] as v4,
+  brushSize: 24.0,
+  brushSoftness: 0.8,
 
   pointerPos: [0, 0] as v2,
   pointerDown: false,
   pointerOver: false,
+
+  idle: false,
 };
 
 type Context = {
@@ -47,17 +49,22 @@ type Context = {
 };
 
 function main(): void {
-  const gl = getWebGlContext();
+  const gl = getWebGl();
+  setupCanvas(gl);
+  setupUserInputs(gl.canvas as HTMLCanvasElement);
   const ctx = setupContext(gl);
-  setupCanvas(gl, ctx);
-  setupUserInputs(gl, ctx);
 
   let last_frame_ms = 0;
   function render(current_frame_ms: number) {
     const delta_ms = current_frame_ms - last_frame_ms;
     last_frame_ms = current_frame_ms;
 
-    draw(gl, ctx);
+    if (!settings.idle) {
+      updateUniforms(gl, ctx, delta_ms);
+      draw(gl, ctx);
+    }
+
+    settings.idle = !settings.pointerOver;
 
     if (settings.pointerOver && settings.pointerDown) {
       ctx.frameIndex ^= 1;
@@ -67,7 +74,7 @@ function main(): void {
   requestAnimationFrame(render);
 }
 
-function getWebGlContext(): WebGLRenderingContext {
+function getWebGl(): WebGLRenderingContext {
   const canvas = document.querySelector("#canvas") as HTMLCanvasElement;
   canvas.width = canvas.parentElement!.clientWidth;
   canvas.height = canvas.parentElement!.clientHeight;
@@ -82,27 +89,25 @@ function getWebGlContext(): WebGLRenderingContext {
   return gl;
 }
 
-function setupCanvas(gl: WebGLRenderingContext, ctx: Context) {
+function setupCanvas(gl: WebGLRenderingContext) {
   const canvas = gl.canvas as HTMLCanvasElement;
 
   window.addEventListener("resize", () => {
     canvas.width = canvas.parentElement!.clientWidth;
     canvas.height = canvas.parentElement!.clientHeight;
 
-    rp_present.makeProjMat(ctx.present.uniforms.proj, [
-      gl.canvas.width,
-      gl.canvas.height,
-    ]);
-    rp_present.updateUniforms(gl, ctx.present.program, ctx.present.locations, {
-      proj: ctx.present.uniforms.proj,
-    });
+    settings.idle = false;
   });
 
   return gl;
 }
 
 function setupContext(gl: WebGLRenderingContext): Context {
-  const ctx: Context = { paint: {}, present: {}, mouse: {} } as Context;
+  const ctx: Context = {
+    paint: {},
+    present: {},
+    mouse: {},
+  } as Context;
 
   ctx.frameIndex = 0;
 
@@ -130,18 +135,6 @@ function setupContext(gl: WebGLRenderingContext): Context {
     ],
   };
   paint.buffers = rp_paint.updateBuffers(gl, paint.attributes, null);
-  paint.uniforms = {
-    view: rp_paint.makeViewMat(mat3.create(), settings.paintExtent),
-    proj: rp_paint.makeProjMat(mat3.create(), settings.paintExtent),
-    mouse_pos: [...settings.pointerPos],
-    mouse_offset_to_brush_uv: rp_paint.makeMouseToBrush(
-      mat3.create(),
-      settings.brushSize,
-    ),
-    brush_color: [...settings.brushColor],
-    brush_softness: settings.brushSoftness,
-  };
-  rp_paint.updateUniforms(gl, paint.program, paint.locations, paint.uniforms);
 
   const present = ctx.present;
   present.program = rp_present.createProgram(gl);
@@ -165,31 +158,99 @@ function setupContext(gl: WebGLRenderingContext): Context {
     ],
   };
   present.buffers = rp_present.updateBuffers(gl, present.attributes, null);
-  present.uniforms = {
-    view: rp_present.makeViewMat(
-      mat4.create(),
-      settings.viewScale,
-      settings.viewRotation,
-      settings.viewTranslation,
-    ),
-    proj: rp_present.makeProjMat(mat4.create(), [
-      gl.canvas.width,
-      gl.canvas.height,
-    ]),
-  };
+
+  updateUniforms(gl, ctx, 0, true);
+  return ctx;
+}
+
+function updateUniforms(
+  gl: WebGLRenderingContext,
+  ctx: Context,
+  delta_ms: number,
+  init = false,
+) {
+  const { paint, present, mouse } = ctx;
+
+  if (init) {
+    present.uniforms = {
+      view: mat4.create(),
+      proj: mat4.create(),
+    };
+  }
+  rp_present.makeViewMat(
+    present.uniforms.view,
+    settings.viewScale,
+    settings.viewRotation,
+    settings.viewTranslation,
+  );
+  rp_present.makeProjMat(present.uniforms.proj, [
+    gl.canvas.width,
+    gl.canvas.height,
+  ]);
+
+  if (init) mouse.viewToTexel = mat3.create();
+  mouse.viewToTexel = makeViewToTexel(mouse.viewToTexel, present.uniforms.view);
+
+  if (init) {
+    paint.uniforms = {
+      view: mat3.create(),
+      proj: mat3.create(),
+      mouse_pos: [
+        [-1, -1],
+        [-1, -1],
+      ],
+      mouse_offset_to_brush_uv: mat3.create(),
+      brush_color: [0, 0, 0, 0],
+      brush_softness: 0,
+    };
+  }
+  rp_paint.makeViewMat(paint.uniforms.view, settings.paintExtent);
+  rp_paint.makeProjMat(paint.uniforms.proj, settings.paintExtent);
+
+  ctx.paint.uniforms.mouse_pos[0][0] = ctx.paint.uniforms.mouse_pos[1][0];
+  ctx.paint.uniforms.mouse_pos[0][1] = ctx.paint.uniforms.mouse_pos[1][1];
+
+  vec2.transformMat3(
+    ctx.paint.uniforms.mouse_pos[1],
+    settings.pointerPos,
+    ctx.mouse.viewToTexel,
+  );
+
+  if (ctx.paint.uniforms.mouse_pos[0][0] < 0) {
+    ctx.paint.uniforms.mouse_pos[0][0] = ctx.paint.uniforms.mouse_pos[1][0];
+    ctx.paint.uniforms.mouse_pos[0][1] = ctx.paint.uniforms.mouse_pos[1][1];
+  }
+
+  rp_paint.updateUniforms(gl, ctx.paint.program, ctx.paint.locations, {
+    mouse_pos: ctx.paint.uniforms.mouse_pos,
+  });
+
+  rp_paint.makeMouseToBrush(
+    paint.uniforms.mouse_offset_to_brush_uv,
+    settings.brushSize,
+  );
+
+  paint.uniforms.brush_color[0] =
+    settings.brushColor[0] * settings.brushColor[3];
+  paint.uniforms.brush_color[1] =
+    settings.brushColor[1] * settings.brushColor[3];
+  paint.uniforms.brush_color[2] =
+    settings.brushColor[2] * settings.brushColor[3];
+  paint.uniforms.brush_color[3] = settings.brushColor[3];
+  paint.uniforms.brush_softness = settings.brushSoftness;
+
   rp_present.updateUniforms(
     gl,
     present.program,
     present.locations,
     present.uniforms,
   );
-
-  const mouse = ctx.mouse;
-  mouse.viewToTexel = makeViewToTexel(mat3.create(), present.uniforms.view);
-  return ctx;
+  rp_paint.updateUniforms(gl, paint.program, paint.locations, paint.uniforms);
 }
 
 function makeViewToTexel(out: mat3, texelToView: mat4): mat3 {
+  if (!out) out = mat3.create();
+
   //copy by dropping Z coordinates
   out[0] = texelToView[0];
   out[1] = texelToView[1];
@@ -207,8 +268,7 @@ function makeViewToTexel(out: mat3, texelToView: mat4): mat3 {
   return out;
 }
 
-function setupUserInputs(gl: WebGLRenderingContext, ctx: Context) {
-  const canvas = gl.canvas as HTMLCanvasElement;
+function setupUserInputs(canvas: HTMLCanvasElement) {
   const inputBrushColor = document.querySelector(
     "#brush-color",
   ) as HTMLInputElement;
@@ -238,6 +298,7 @@ function setupUserInputs(gl: WebGLRenderingContext, ctx: Context) {
   canvas.addEventListener("pointerout", (_event) => {
     settings.pointerOver = false;
     settings.pointerDown = false;
+    settings.pointerPos.fill(-1);
   });
   canvas.addEventListener("pointerdown", (_event) => {
     settings.pointerDown = true;
@@ -251,18 +312,6 @@ function setupUserInputs(gl: WebGLRenderingContext, ctx: Context) {
     const rect = canvas.getBoundingClientRect();
     settings.pointerPos[0] = e.clientX - rect.x;
     settings.pointerPos[1] = e.clientY - rect.y;
-
-    ctx.paint.uniforms.mouse_pos[0] = settings.pointerPos[0];
-    ctx.paint.uniforms.mouse_pos[1] = settings.pointerPos[1];
-
-    vec2.transformMat3(
-      ctx.paint.uniforms.mouse_pos,
-      ctx.paint.uniforms.mouse_pos,
-      ctx.mouse.viewToTexel,
-    );
-    rp_paint.updateUniforms(gl, ctx.paint.program, ctx.paint.locations, {
-      mouse_pos: ctx.paint.uniforms.mouse_pos,
-    });
   });
 
   inputBrushColor.addEventListener("change", (event) => {
@@ -272,53 +321,24 @@ function setupUserInputs(gl: WebGLRenderingContext, ctx: Context) {
     settings.brushColor[0] = parseInt(t.value.slice(1, 3), 16) / 0xff;
     settings.brushColor[1] = parseInt(t.value.slice(3, 5), 16) / 0xff;
     settings.brushColor[2] = parseInt(t.value.slice(5, 7), 16) / 0xff;
-
-    ctx.paint.uniforms.brush_color[0] = settings.brushColor[0];
-    ctx.paint.uniforms.brush_color[1] = settings.brushColor[1];
-    ctx.paint.uniforms.brush_color[2] = settings.brushColor[2];
-
-    rp_paint.updateUniforms(gl, ctx.paint.program, ctx.paint.locations, {
-      brush_color: ctx.paint.uniforms.brush_color,
-    });
   });
 
   inputBrushFlow.addEventListener("change", (event) => {
     const e = event as InputEvent;
     const t = e.target as HTMLInputElement;
     settings.brushColor[3] = +t.value;
-
-    ctx.paint.uniforms.brush_color[3] = settings.brushColor[3];
-
-    rp_paint.updateUniforms(gl, ctx.paint.program, ctx.paint.locations, {
-      brush_color: ctx.paint.uniforms.brush_color,
-    });
   });
 
   inputBrushSize.addEventListener("change", (event) => {
     const e = event as InputEvent;
     const t = e.target as HTMLInputElement;
     settings.brushSize = +t.value;
-
-    ctx.paint.uniforms.mouse_offset_to_brush_uv = rp_paint.makeMouseToBrush(
-      ctx.paint.uniforms.mouse_offset_to_brush_uv,
-      settings.brushSize,
-    );
-
-    rp_paint.updateUniforms(gl, ctx.paint.program, ctx.paint.locations, {
-      mouse_offset_to_brush_uv: ctx.paint.uniforms.mouse_offset_to_brush_uv,
-    });
   });
 
   inputBrushSoftness.addEventListener("change", (event) => {
     const e = event as InputEvent;
     const t = e.target as HTMLInputElement;
     settings.brushSoftness = +t.value;
-
-    ctx.paint.uniforms.brush_softness = settings.brushSoftness;
-
-    rp_paint.updateUniforms(gl, ctx.paint.program, ctx.paint.locations, {
-      brush_softness: ctx.paint.uniforms.brush_softness,
-    });
   });
 }
 

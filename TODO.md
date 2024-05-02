@@ -4,12 +4,7 @@
 
 1 sec for x% flow to get to 100% opacity.
 Find x value through experimentation.
-Find scaling function for flow by studing the integration of repeated applications of the brush color and alpha.
-
-## PAINT: create sub-steps to smooth out rapid movements
-
-Idea: track current and previous mouse position, sample line in-between at N intervals, apply brush for every sample.
-Assume line is straight as the time interval is small. Remember to clear both mouse positions on pointer events.
+Find scaling function for flow by studying the integration of repeated applications of the brush color and alpha.
 
 ## PRESENT: add border to paint area
 
@@ -34,7 +29,7 @@ Try downsampling both the SDF and the JFA's input to save on memory (important a
 
 Probably diff-based, saved on pointer up events.
 Could use a transparent double-buffer to paint on, apply on pointer-up to the main texture, composite the two during present.
-Probably compressed, almost certanly saved in ring buffer.
+Probably compressed, almost certainly saved in ring buffer.
 
 ## PAINT: implement real opacity modulation by capping the temp buffer alpha
 
