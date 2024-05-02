@@ -38,21 +38,21 @@ const frag_src = `
         // mediump vec4 brush_sdf_clr = texture2D(u_brush_nd, v_brush_uv); // TODO after implementing SDF generation
 
         mediump float dist_to_circle = length(vec2(0.5, 0.5) - v_brush_uv);
-        mediump float circle_sdf = -(dist_to_circle * 2.0 - 1.0);
-        mediump vec4 brush_sdf_clr = vec4(circle_sdf, circle_sdf, circle_sdf, circle_sdf);
+        mediump float brush_sdf = -(dist_to_circle * 2.0 - 1.0);
 
-        mediump vec4 brush_clr_factor = clamp(
-            (1.0 / u_brush_softness) * brush_sdf_clr,
+        mediump float brush_alpha = clamp(
+            (1.0 / u_brush_softness) * brush_sdf,
             0.0, 1.0);
-        mediump vec4 brush_clr = u_brush_color * brush_clr_factor;
+        brush_alpha =  brush_alpha * u_brush_color.w;
 
-        mediump vec4 prem_original_clr = vec4(original_clr.w * original_clr.xyz, original_clr.w);
-        mediump vec4 prem_brush_clr = vec4(brush_clr.w * brush_clr.xyz, brush_clr.w);
-        mediump vec4 prem_out = vec4(
-            prem_brush_clr.xyz + (1.0 - prem_brush_clr.w) * prem_original_clr.xyz,
-            prem_brush_clr.w + (1.0 - prem_brush_clr.w) * prem_original_clr.w);
+        // pm_* stands for pre-multiplied alpha
+        mediump vec3 pm_brush_clr = u_brush_color.xyz * brush_alpha;
+        mediump vec3 pm_original_clr = original_clr.xyz * original_clr.w;
 
-        gl_FragColor = vec4(prem_out.w * prem_out.xyz, prem_out.w);
+        mediump vec3 pm_frag_clr = pm_brush_clr + (1.0 - brush_alpha) * pm_original_clr;
+        mediump float frag_alpha = brush_alpha + (1.0 - brush_alpha) * original_clr.w;
+
+        gl_FragColor = vec4(1.0/frag_alpha * pm_frag_clr, frag_alpha);
     }
 `;
 
