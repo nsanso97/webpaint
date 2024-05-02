@@ -1,62 +1,68 @@
 <!doctype html>
 <html lang="en">
-  <head>
-    <meta charset="UTF-8" />
-    <link rel="icon" type="image/svg+xml" href="/vite.svg" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>Vite App</title>
-    <script type="module" src="/src/main.ts" defer></script>
-  </head>
-  <body class="h-screen">
-    <header id="header" class="h-12 w-full border-b bg-neutral-100 bg"></header>
-    <div class="flex flex-row flex-1 w-full overflow-clip">
-      <div id="tools-left" class="w-64 border-r bg"></div>
-      <div id="canvas-box" class="flex-1 overflow-clip">
-        <canvas id="canvas"></canvas>
-      </div>
-      <div id="tools-right" class="w-64 border-l bg flex flex-col gap-y-1">
-        <label>
-          brush color
-          <input type="color" id="brush-color" value="#000000" />
-        </label>
+    <head>
+        <meta charset="UTF-8" />
+        <link rel="icon" type="image/svg+xml" href="/vite.svg" />
+        <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+        <title>Vite App</title>
+        <script type="module" src="/src/main.ts" defer></script>
+    </head>
+    <body class="h-screen">
+        <header
+            id="header"
+            class="bg h-12 w-full border-b bg-neutral-100"
+        ></header>
+        <div class="flex w-full flex-1 flex-row overflow-clip">
+            <div id="tools-left" class="bg w-64 border-r"></div>
+            <div id="canvas-box" class="flex-1 overflow-clip">
+                <canvas id="canvas"></canvas>
+            </div>
+            <div
+                id="tools-right"
+                class="bg flex w-64 flex-col gap-y-1 border-l"
+            >
+                <label>
+                    brush color
+                    <input type="color" id="brush-color" value="#000000" />
+                </label>
 
-        <label>
-          brush flow
-          <input
-            type="range"
-            id="brush-flow"
-            min="0"
-            max="1"
-            step="0.05"
-            value="1"
-          />
-        </label>
+                <label>
+                    brush flow
+                    <input
+                        type="range"
+                        id="brush-flow"
+                        min="0"
+                        max="1"
+                        step="0.05"
+                        value="1"
+                    />
+                </label>
 
-        <label>
-          brush size
-          <input
-            type="range"
-            id="brush-size"
-            min="1"
-            max="64"
-            step="1"
-            value="12"
-          />
-        </label>
+                <label>
+                    brush size
+                    <input
+                        type="range"
+                        id="brush-size"
+                        min="1"
+                        max="64"
+                        step="1"
+                        value="12"
+                    />
+                </label>
 
-        <label>
-          brush softness
-          <input
-            type="range"
-            id="brush-softness"
-            min="0"
-            max="1"
-            step="0.05"
-            value="0.9"
-          />
-        </label>
-      </div>
-    </div>
-    <footer id="footer" class="h-12 w-full border-t bg"></footer>
-  </body>
+                <label>
+                    brush softness
+                    <input
+                        type="range"
+                        id="brush-softness"
+                        min="0"
+                        max="1"
+                        step="0.05"
+                        value="0.9"
+                    />
+                </label>
+            </div>
+        </div>
+        <footer id="footer" class="bg h-12 w-full border-t"></footer>
+    </body>
 </html>

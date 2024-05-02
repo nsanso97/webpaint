@@ -37,8 +37,8 @@ Probably compressed, almost certainly saved in ring buffer.
 
 ## FINAL TOUCHES
 
-- Make the UI pretty
-- Add save functionality
-- Maybe add button to load current image as brush
+-   Make the UI pretty
+-   Add save functionality
+-   Maybe add button to load current image as brush
 
 ## DEPLOY IN AWS, ADD TO CV

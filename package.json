@@ -1,21 +1,21 @@
 {
-  "name": "pain",
-  "private": true,
-  "version": "0.0.0",
-  "type": "module",
-  "scripts": {
-    "dev": "vite",
-    "build": "vite build",
-    "preview": "vite preview"
-  },
-  "devDependencies": {
-    "typescript": "^5.2.2",
-    "autoprefixer": "^10.4.19",
-    "gl-matrix": "^3.4.3",
-    "postcss": "^8.4.38",
-    "prettier": "^3.2.5",
-    "prettier-plugin-tailwindcss": "^0.5.13",
-    "tailwindcss": "^3.4.3",
-    "vite": "^5.2.0"
-  }
+    "name": "pain",
+    "private": true,
+    "version": "0.0.0",
+    "type": "module",
+    "scripts": {
+        "dev": "vite",
+        "build": "vite build",
+        "preview": "vite preview"
+    },
+    "devDependencies": {
+        "typescript": "^5.2.2",
+        "autoprefixer": "^10.4.19",
+        "gl-matrix": "^3.4.3",
+        "postcss": "^8.4.38",
+        "prettier": "^3.2.5",
+        "prettier-plugin-tailwindcss": "^0.5.13",
+        "tailwindcss": "^3.4.3",
+        "vite": "^5.2.0"
+    }
 }
