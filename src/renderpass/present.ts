@@ -187,18 +187,23 @@ export function draw(
  * @param scale scale at which to draw the original texels
  * @param rotation radians
  * @param translation in view units
+ * @param extent of the original texture in texels
+ * @param extent of the canvas
  * @returns out */
 export function makeViewMat(
     out: mat4,
     scale: number,
     rotation: number,
     translation: v2,
+    textureExtent: v2,
+    canvasExtent: v2,
 ): mat4 {
     mat4.identity(out);
     mat4.translate(out, out, [translation[0], translation[1], 0]); // 4: translate
+    mat4.translate(out, out, [canvasExtent[0] / 2, canvasExtent[1] / 2, 0]); // 4: translate
     mat4.rotate(out, out, rotation, [0, 0, 1]); // 3: rotate
     mat4.scale(out, out, [scale, scale, 1]); // 2: scale
-    // mat4.translate(out, out, [textureExtent[0]/2, textureExtent[1]/2, 1]); // 1: center
+    mat4.translate(out, out, [-textureExtent[0] / 2, -textureExtent[1] / 2, 1]); // 1: center
     return out;
 }
 

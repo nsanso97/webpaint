@@ -15,14 +15,14 @@ const settings = {
 
     viewScale: 1.0,
     viewRotation: 0.0,
-    viewTranslation: [32, 32] as v2,
+    viewTranslation: [0, 0] as v2,
 
     brushColor: [1.0, 0.0, 0.0] as v3,
     brushFlow: 1.0,
     brushSize: 24.0,
     brushSoftness: 0.8,
 
-    pointerPos: [0, 0] as v2,
+    pointerPos: [NaN, NaN] as v2,
     pointerDown: false,
     pointerOver: false,
 
@@ -68,16 +68,16 @@ function main(): void {
         const delta_ms = current_frame_ms - last_frame_ms;
         last_frame_ms = current_frame_ms;
 
-        if (!settings.idle) {
-            updateUniforms(gl, ctx, delta_ms);
-            draw(gl, ctx);
-        }
-
-        settings.idle = !settings.pointerOver;
-
         if (settings.pointerOver && settings.pointerDown) {
             ctx.frameIndex ^= 1;
         }
+
+        if (!settings.idle) {
+            updateUniforms(gl, ctx, delta_ms);
+            draw(gl, ctx);
+            settings.idle = true;
+        }
+
         requestAnimationFrame(render);
     }
     requestAnimationFrame(render);
@@ -102,10 +102,10 @@ function setupCanvas(gl: WebGLRenderingContext) {
     const canvas = gl.canvas as HTMLCanvasElement;
 
     window.addEventListener("resize", () => {
+        settings.idle = false;
+
         canvas.width = canvas.parentElement!.clientWidth;
         canvas.height = canvas.parentElement!.clientHeight;
-
-        settings.idle = false;
     });
 
     return gl;
@@ -186,16 +186,16 @@ function updateUniforms(
             proj: mat4.create(),
         };
     }
+    const canvasExtent = [gl.canvas.width, gl.canvas.height] as v2;
     rp_present.makeViewMat(
         present.uniforms.view,
         settings.viewScale,
         settings.viewRotation,
         settings.viewTranslation,
+        settings.paintExtent,
+        canvasExtent,
     );
-    rp_present.makeProjMat(present.uniforms.proj, [
-        gl.canvas.width,
-        gl.canvas.height,
-    ]);
+    rp_present.makeProjMat(present.uniforms.proj, canvasExtent);
 
     if (init) mouse.viewToTexel = mat3.create();
     mouse.viewToTexel = makeViewToTexel(
@@ -230,7 +230,7 @@ function updateUniforms(
         ctx.mouse.viewToTexel,
     );
 
-    if (ctx.paint.uniforms.mouse_pos[0][0] < 0) {
+    if (isNaN(ctx.paint.uniforms.mouse_pos[0][0])) {
         ctx.paint.uniforms.mouse_pos[0][0] = ctx.paint.uniforms.mouse_pos[1][0];
         ctx.paint.uniforms.mouse_pos[0][1] = ctx.paint.uniforms.mouse_pos[1][1];
     }
@@ -251,7 +251,6 @@ function updateUniforms(
         1 / settings.maxSecondsToOpaque / (1 - settings.brushFlow + 0.000001);
     paint.uniforms.brush_softness = settings.brushSoftness;
     paint.uniforms.delta_ms = delta_ms;
-    console.log(paint.uniforms.brush_color, paint.uniforms.brush_flow);
 
     rp_present.updateUniforms(
         gl,
@@ -283,6 +282,78 @@ function makeViewToTexel(out: mat3, texelToView: mat4): mat3 {
 }
 
 function setupUserInputs(canvas: HTMLCanvasElement) {
+    canvas.addEventListener("mouseup", (event) => event.preventDefault());
+    canvas.addEventListener("mousedown", (event) => event.preventDefault());
+    canvas.addEventListener("pointerover", (_event) => {
+        settings.idle = false;
+        settings.pointerOver = true;
+    });
+    canvas.addEventListener("pointerout", (_event) => {
+        settings.idle = false;
+        settings.pointerOver = false;
+        settings.pointerDown = false;
+        settings.pointerPos.fill(NaN);
+    });
+    canvas.addEventListener("pointerdown", (_event) => {
+        settings.idle = false;
+        settings.pointerDown = true;
+    });
+    canvas.addEventListener("pointerup", (_event) => {
+        settings.idle = false;
+        settings.pointerDown = false;
+    });
+    canvas.addEventListener("pointermove", (event) => {
+        settings.idle = false;
+        const e = event as PointerEvent;
+
+        const rect = canvas.getBoundingClientRect();
+        settings.pointerPos[0] = e.clientX - rect.x;
+        settings.pointerPos[1] = e.clientY - rect.y;
+    });
+
+    const inputX = document.querySelector("#translation-x") as HTMLInputElement;
+    const inputY = document.querySelector("#translation-y") as HTMLInputElement;
+    const inputScale = document.querySelector("#scale") as HTMLInputElement;
+    const inputRotation = document.querySelector(
+        "#rotation",
+    ) as HTMLInputElement;
+
+    inputX.min = (-settings.paintExtent[0] / 2).toString();
+    inputX.max = (settings.paintExtent[0] / 2).toString();
+    inputX.value = settings.viewTranslation[0].toString();
+
+    inputY.min = (-settings.paintExtent[1] / 2).toString();
+    inputY.max = (settings.paintExtent[1] / 2).toString();
+    inputX.value = settings.viewTranslation[1].toString();
+
+    inputScale.value = settings.viewScale.toString();
+    inputRotation.value = (settings.viewRotation / Math.PI).toString();
+
+    inputX.addEventListener("input", (event) => {
+        settings.idle = false;
+        const e = event as InputEvent;
+        const t = e.target as HTMLInputElement;
+        settings.viewTranslation[0] = +t.value;
+    });
+    inputY.addEventListener("input", (event) => {
+        settings.idle = false;
+        const e = event as InputEvent;
+        const t = e.target as HTMLInputElement;
+        settings.viewTranslation[1] = +t.value;
+    });
+    inputScale.addEventListener("input", (event) => {
+        settings.idle = false;
+        const e = event as InputEvent;
+        const t = e.target as HTMLInputElement;
+        settings.viewScale = +t.value;
+    });
+    inputRotation.addEventListener("input", (event) => {
+        settings.idle = false;
+        const e = event as InputEvent;
+        const t = e.target as HTMLInputElement;
+        settings.viewRotation = +t.value * Math.PI;
+    });
+
     const inputBrushColor = document.querySelector(
         "#brush-color",
     ) as HTMLInputElement;
@@ -304,31 +375,8 @@ function setupUserInputs(canvas: HTMLCanvasElement) {
     inputBrushFlow.value = settings.brushFlow.toString();
     inputBrushSoftness.value = settings.brushSoftness.toString();
 
-    canvas.addEventListener("mouseup", (event) => event.preventDefault());
-    canvas.addEventListener("mousedown", (event) => event.preventDefault());
-    canvas.addEventListener("pointerover", (_event) => {
-        settings.pointerOver = true;
-    });
-    canvas.addEventListener("pointerout", (_event) => {
-        settings.pointerOver = false;
-        settings.pointerDown = false;
-        settings.pointerPos.fill(-1);
-    });
-    canvas.addEventListener("pointerdown", (_event) => {
-        settings.pointerDown = true;
-    });
-    canvas.addEventListener("pointerup", (_event) => {
-        settings.pointerDown = false;
-    });
-    canvas.addEventListener("pointermove", (event) => {
-        const e = event as PointerEvent;
-
-        const rect = canvas.getBoundingClientRect();
-        settings.pointerPos[0] = e.clientX - rect.x;
-        settings.pointerPos[1] = e.clientY - rect.y;
-    });
-
-    inputBrushColor.addEventListener("change", (event) => {
+    inputBrushColor.addEventListener("input", (event) => {
+        settings.idle = false;
         const e = event as InputEvent;
         const t = e.target as HTMLInputElement;
 
@@ -337,19 +385,22 @@ function setupUserInputs(canvas: HTMLCanvasElement) {
         settings.brushColor[2] = parseInt(t.value.slice(5, 7), 16) / 0xff;
     });
 
-    inputBrushFlow.addEventListener("change", (event) => {
+    inputBrushFlow.addEventListener("input", (event) => {
+        settings.idle = false;
         const e = event as InputEvent;
         const t = e.target as HTMLInputElement;
         settings.brushFlow = +t.value;
     });
 
-    inputBrushSize.addEventListener("change", (event) => {
+    inputBrushSize.addEventListener("input", (event) => {
+        settings.idle = false;
         const e = event as InputEvent;
         const t = e.target as HTMLInputElement;
         settings.brushSize = +t.value;
     });
 
-    inputBrushSoftness.addEventListener("change", (event) => {
+    inputBrushSoftness.addEventListener("input", (event) => {
+        settings.idle = false;
         const e = event as InputEvent;
         const t = e.target as HTMLInputElement;
         settings.brushSoftness = +t.value;
