@@ -1,5 +1,14 @@
 # TODO
 
+## PAINT: store mouse positions in ring buffer
+
+Need fixed max sized ring buffer (max size either 16 or 32).
+Need to flatten the arrays used in uniforms.
+Need to interpolate between samples anyway.
+The interpolation and the flow normalization have to be done with respect to length, not time.
+Strongly consider early return strategies in fragment for texels further that the brush size.
+Strongly consider using buffer object streaming for mouse samples (https://www.khronos.org/opengl/wiki/Buffer_Object_Streaming).
+
 ## MAYBE: PAINT: normalize flow with respect to movement
 
 add as an option
