@@ -22,7 +22,7 @@ const settings = {
     brushSize: 24.0,
     brushSoftness: 0.8,
 
-    pointerPos: [NaN, NaN] as v2,
+    pointerSamples: [] as v2[],
     pointerDown: false,
     pointerOver: false,
 
@@ -209,36 +209,34 @@ function updateUniforms(
         paint.uniforms = {
             view: mat3.create(),
             proj: mat3.create(),
-            mouse_pos: [
-                [-1, -1],
-                [-1, -1],
-            ],
+            mouse_samples: [],
+            n_mouse_samples: 0,
             mouse_offset_to_brush_uv: mat3.create(),
             brush_color: [0, 0, 0],
             brush_flow: 0,
             brush_softness: 0,
             delta_ms: 0,
         };
+        for (let i = 0; i < 64; i++) {
+            paint.uniforms.mouse_samples[i] = [0, 0];
+        }
     }
     rp_paint.makeViewMat(paint.uniforms.view, settings.paintExtent);
     rp_paint.makeProjMat(paint.uniforms.proj, settings.paintExtent);
 
-    ctx.paint.uniforms.mouse_pos[0][0] = ctx.paint.uniforms.mouse_pos[1][0];
-    ctx.paint.uniforms.mouse_pos[0][1] = ctx.paint.uniforms.mouse_pos[1][1];
-
-    vec2.transformMat3(
-        ctx.paint.uniforms.mouse_pos[1],
-        settings.pointerPos,
-        ctx.mouse.viewToTexel,
-    );
-
-    if (isNaN(ctx.paint.uniforms.mouse_pos[0][0])) {
-        ctx.paint.uniforms.mouse_pos[0][0] = ctx.paint.uniforms.mouse_pos[1][0];
-        ctx.paint.uniforms.mouse_pos[0][1] = ctx.paint.uniforms.mouse_pos[1][1];
+    paint.uniforms.n_mouse_samples = settings.pointerSamples.length;
+    for (let i = 0; i < paint.uniforms.n_mouse_samples; i++) {
+        vec2.transformMat3(
+            paint.uniforms.mouse_samples[i],
+            settings.pointerSamples[i],
+            mouse.viewToTexel,
+        );
     }
+    settings.pointerSamples = [];
 
     rp_paint.updateUniforms(gl, ctx.paint.program, ctx.paint.locations, {
-        mouse_pos: ctx.paint.uniforms.mouse_pos,
+        n_mouse_samples: ctx.paint.uniforms.n_mouse_samples,
+        mouse_samples: ctx.paint.uniforms.mouse_samples,
     });
 
     rp_paint.makeMouseToBrush(
@@ -294,7 +292,6 @@ function setupUserInputs(canvas: HTMLCanvasElement) {
         settings.idle = false;
         settings.pointerOver = false;
         settings.pointerDown = false;
-        settings.pointerPos.fill(NaN);
     });
     canvas.addEventListener("pointerdown", (_event) => {
         settings.idle = false;
@@ -309,8 +306,7 @@ function setupUserInputs(canvas: HTMLCanvasElement) {
         const e = event as PointerEvent;
 
         const rect = canvas.getBoundingClientRect();
-        settings.pointerPos[0] = e.clientX - rect.x;
-        settings.pointerPos[1] = e.clientY - rect.y;
+        settings.pointerSamples.push([e.clientX - rect.x, e.clientY - rect.y]);
     });
 
     const inputX = document.querySelector("#translation-x") as HTMLInputElement;

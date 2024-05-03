@@ -2,33 +2,26 @@ import { mat3 } from "gl-matrix";
 import { TBuffers, TLocations, loadShader, v2, v3, v4 } from "./shared";
 
 const vert_src = `
-    #define N_MOUSE_POS 2
-
     attribute vec2 a_uv;
 
     uniform mat3 u_view;
     uniform mat3 u_proj;
-    uniform vec2 u_mouse_pos[N_MOUSE_POS];
-    uniform mat3 u_mouse_offset_to_brush_uv;
 
     #ifdef GL_FRAGMENT_PRECISION_HIGH
         varying highp vec2 v_uv;
-        varying highp vec2 v_brush_uv[N_MOUSE_POS];
+        varying highp vec2 v_texel_coord;
     #else
-        varying highp vec2 v_uv;
-        varying highp vec2 v_brush_uv[N_MOUSE_POS];
+        varying mediump vec2 v_uv;
+        varying mediump vec2 v_texel_coord;
     #endif
 
     void main() {
         v_uv = a_uv;
+
         vec3 pos2D = u_proj * u_view * vec3(a_uv, 1.0);
         gl_Position = vec4(pos2D.xy, 0.0, pos2D.z);
 
-        vec3 texel_coord = u_view * vec3(a_uv, 1.0);
-        for (int i = 0; i < N_MOUSE_POS; i++) {
-            vec3 mouse_offset = vec3(u_mouse_pos[i] - texel_coord.xy, 1.0);
-            v_brush_uv[i] = (u_mouse_offset_to_brush_uv * mouse_offset).xy;
-        }
+        v_texel_coord = (u_view * vec3(a_uv, 1.0)).xy;
     }
 `;
 
@@ -39,31 +32,40 @@ const frag_src = `
         precision mediump float;
     #endif
  
+    #define MOUSE_SAMPLE_BUFFER_SIZE 64
+
     #define PI 3.1415926535897932384626433832795
-    #define N_MOUSE_POS 2
-    #define N_SUBSAMPLES 16
     #define EPSILON 0.000001
     #define TWO_THIRDS 0.66666666
     #define MS_TO_S 0.001
 
     varying vec2 v_uv;
-    varying vec2 v_brush_uv[N_MOUSE_POS];
+    varying vec2 v_texel_coord;
 
     uniform sampler2D u_sampler;
+
     // TODO: uniform sampler2D u_brush_sdf;
     uniform vec3 u_brush_color;
     uniform float u_brush_flow;
     uniform float u_brush_softness;
+
+    uniform lowp int u_n_mouse_samples;
+    uniform vec2 u_mouse_samples[MOUSE_SAMPLE_BUFFER_SIZE];
+    uniform mat3 u_mouse_offset_to_brush_uv;
+
     uniform float u_delta_ms;
 
     void main() {
         vec4 out_clr = texture2D(u_sampler, v_uv);
 
-        float step = 1.0 / float(N_SUBSAMPLES);
-        float delta_ms = u_delta_ms / float(N_SUBSAMPLES);
+        float step = 1.0 / float(u_n_mouse_samples);
+        float delta_ms = u_delta_ms / float(u_n_mouse_samples);
 
         // This formula comes from using a logistic function to approximate the geometric
         // series formed by alpha blending the same color repeatedly.
+        // The objective is to model brush flow in a framerate independent way, by 
+        // specifying it as desired time of application to reach full opacity, instead 
+        // of as the alpha of a single stamp.
         //
         // The exact logistic used is:
         // $ (2 / (1 + e^(-kx))) - 1 $
@@ -81,9 +83,11 @@ const frag_src = `
 
         vec4 brush_clr = vec4(u_brush_color * alpha, alpha);
         
-        // skip i == 0 as it points to the previous mouse position
-        for (int i = 1; i <= N_SUBSAMPLES; i++) {
-            vec2 sample_uv = mix(v_brush_uv[0], v_brush_uv[1], step * float(i));
+        for (int i = 0; i <= MOUSE_SAMPLE_BUFFER_SIZE; i++) {
+            if (i >= u_n_mouse_samples) break;
+
+            vec3 mouse_offset = vec3(u_mouse_samples[i] - v_texel_coord, 1.0);
+            vec2 sample_uv = (u_mouse_offset_to_brush_uv * mouse_offset).xy;
 
             // TODO after implementing SDF generation
             // vec4 brush_sdf_clr = texture2D(u_brush_nd, sample_uv); 
@@ -113,8 +117,10 @@ export type Uniforms = {
     view: mat3;
     /** Transform from texture(0:W,0:H) to clip(-1:1,-1:1) */
     proj: mat3;
-    /** Mouse position in texure space(0:W,0:H) */
-    mouse_pos: [v2, v2];
+    /** Mouse positions for this frame in texure space(0:W,0:H) */
+    mouse_samples: v2[];
+    /** Number of stored mouse positions (MAX 64 defined in shader) */
+    n_mouse_samples: number;
     /** Transform from the 2D vector offset from the mouse
      * position in texture space to the position in brush uv
      * space used to sample to brush Signed Distance Field (SDF) */
@@ -166,7 +172,11 @@ export function getLocations(
         uniforms: {
             view: gl.getUniformLocation(program, "u_view")!,
             proj: gl.getUniformLocation(program, "u_proj")!,
-            mouse_pos: gl.getUniformLocation(program, "u_mouse_pos")!,
+            mouse_samples: gl.getUniformLocation(program, "u_mouse_samples")!,
+            n_mouse_samples: gl.getUniformLocation(
+                program,
+                "u_n_mouse_samples",
+            )!,
             mouse_offset_to_brush_uv: gl.getUniformLocation(
                 program,
                 "u_mouse_offset_to_brush_uv",
@@ -233,8 +243,17 @@ export function updateUniforms(
     if (uniforms.proj) {
         gl.uniformMatrix3fv(locations.uniforms.proj, false, uniforms.proj);
     }
-    if (uniforms.mouse_pos) {
-        gl.uniform2fv(locations.uniforms.mouse_pos, uniforms.mouse_pos.flat());
+    if (uniforms.mouse_samples) {
+        gl.uniform2fv(
+            locations.uniforms.mouse_samples,
+            uniforms.mouse_samples.flat(),
+        );
+    }
+    if (uniforms.n_mouse_samples) {
+        gl.uniform1i(
+            locations.uniforms.n_mouse_samples,
+            uniforms.n_mouse_samples,
+        );
     }
     if (uniforms.mouse_offset_to_brush_uv) {
         gl.uniformMatrix3fv(
