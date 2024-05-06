@@ -1,5 +1,6 @@
-import { mat4 } from "gl-matrix";
-import { TBuffers, TLocations, loadShader, v2, v3 } from "./shared";
+import { vec2, vec3, mat4 } from "gl-matrix";
+import { TBuffers, TLocations, loadShader } from "./shared";
+import { vec2v, vec3v } from "../utils/typedefs";
 
 const vert_src = `
     attribute vec4 a_pos;
@@ -27,9 +28,9 @@ const frag_src = `
 `;
 
 export type Attributes = {
-    index: v3[];
-    pos: v3[];
-    uv: v2[];
+    index: vec3v;
+    pos: vec3v;
+    uv: vec2v;
 };
 
 export type Uniforms = {
@@ -111,7 +112,7 @@ export function updateBuffers(
         gl.bindBuffer(gl.ARRAY_BUFFER, out_buffers.pos);
         gl.bufferData(
             gl.ARRAY_BUFFER,
-            new Float32Array(attributes.pos.flat()),
+            new Float32Array(attributes.pos),
             gl.STATIC_DRAW,
         );
     }
@@ -120,7 +121,7 @@ export function updateBuffers(
         gl.bindBuffer(gl.ARRAY_BUFFER, out_buffers.uv);
         gl.bufferData(
             gl.ARRAY_BUFFER,
-            new Float32Array(attributes.uv.flat()),
+            new Float32Array(attributes.uv),
             gl.STATIC_DRAW,
         );
     }
@@ -129,7 +130,7 @@ export function updateBuffers(
         gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER, out_buffers.index);
         gl.bufferData(
             gl.ELEMENT_ARRAY_BUFFER,
-            new Uint16Array(attributes.index.flat()),
+            new Uint16Array(attributes.index),
             gl.STATIC_DRAW,
         );
     }
@@ -159,7 +160,7 @@ export function draw(
     loc: Locations,
     buf: Buffers,
     tex: Textures,
-    triangleCount: number,
+    count: number,
 ) {
     gl.clearColor(0.0, 0.0, 0.0, 0.1);
     gl.clear(gl.COLOR_BUFFER_BIT);
@@ -179,7 +180,7 @@ export function draw(
 
     gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER, buf.index);
 
-    gl.drawElements(gl.TRIANGLES, triangleCount * 3, gl.UNSIGNED_SHORT, 0);
+    gl.drawElements(gl.TRIANGLES, count, gl.UNSIGNED_SHORT, 0);
 }
 
 /** NOTE: needs testing with user interaction
@@ -194,9 +195,9 @@ export function makeViewMat(
     out: mat4,
     scale: number,
     rotation: number,
-    translation: v2,
-    textureExtent: v2,
-    canvasExtent: v2,
+    translation: vec2,
+    textureExtent: vec2,
+    canvasExtent: vec2,
 ): mat4 {
     mat4.identity(out);
     mat4.translate(out, out, [canvasExtent[0] / 2, canvasExtent[1] / 2, 0]); // 4: translate
@@ -208,7 +209,7 @@ export function makeViewMat(
 }
 
 /** @returns out */
-export function makeProjMat(out: mat4, canvasExtent: v2): mat4 {
+export function makeProjMat(out: mat4, canvasExtent: vec2): mat4 {
     mat4.identity(out);
     mat4.translate(out, out, [-1, 1, 0]);
     mat4.scale(out, out, [2 / canvasExtent[0], -2 / canvasExtent[1], 1]);

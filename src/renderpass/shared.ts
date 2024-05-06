@@ -1,7 +1,3 @@
-export type v2 = [number, number];
-export type v3 = [number, number, number];
-export type v4 = [number, number, number, number];
-
 export type TLocations<Attributes, Uniforms, Textures> = {
     attributes: {
         [key in keyof Attributes]: number;

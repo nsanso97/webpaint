@@ -1,5 +1,6 @@
-import { mat3 } from "gl-matrix";
-import { TBuffers, TLocations, loadShader, v2, v3, v4 } from "./shared";
+import { vec2, vec3, mat3 } from "gl-matrix";
+import { TBuffers, TLocations, loadShader } from "./shared";
+import { vec2v, vec3v } from "../utils/typedefs";
 
 const vert_src = `
     #define N_MOUSE_POS 2
@@ -104,8 +105,8 @@ const frag_src = `
 `;
 
 export type Attributes = {
-    index: v3[];
-    uv: v2[];
+    index: vec3v;
+    uv: vec2v;
 };
 
 export type Uniforms = {
@@ -114,13 +115,13 @@ export type Uniforms = {
     /** Transform from texture(0:W,0:H) to clip(-1:1,-1:1) */
     proj: mat3;
     /** Mouse position in texure space(0:W,0:H) */
-    mouse_pos: [v2, v2];
+    mouse_pos: vec2v;
     /** Transform from the 2D vector offset from the mouse
      * position in texture space to the position in brush uv
      * space used to sample to brush Signed Distance Field (SDF) */
     mouse_offset_to_brush_uv: mat3;
     /** RGBA premuliplied */
-    brush_color: v3;
+    brush_color: vec3;
     /** inverse of the time in seconds needed to reach full opacity */
     brush_flow: number;
     /** Range 0:1, with 0 being hardest and 1 being softest */
@@ -202,7 +203,7 @@ export function updateBuffers(
         gl.bindBuffer(gl.ARRAY_BUFFER, out_buffers.uv);
         gl.bufferData(
             gl.ARRAY_BUFFER,
-            new Float32Array(attributes.uv.flat()),
+            new Float32Array(attributes.uv),
             gl.STATIC_DRAW,
         );
     }
@@ -211,7 +212,7 @@ export function updateBuffers(
         gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER, out_buffers.index);
         gl.bufferData(
             gl.ELEMENT_ARRAY_BUFFER,
-            new Uint16Array(attributes.index.flat()),
+            new Uint16Array(attributes.index),
             gl.STATIC_DRAW,
         );
     }
@@ -234,7 +235,7 @@ export function updateUniforms(
         gl.uniformMatrix3fv(locations.uniforms.proj, false, uniforms.proj);
     }
     if (uniforms.mouse_pos) {
-        gl.uniform2fv(locations.uniforms.mouse_pos, uniforms.mouse_pos.flat());
+        gl.uniform2fv(locations.uniforms.mouse_pos, uniforms.mouse_pos);
     }
     if (uniforms.mouse_offset_to_brush_uv) {
         gl.uniformMatrix3fv(
@@ -266,7 +267,7 @@ export function draw(
     loc: Locations,
     buf: Buffers,
     tex: Textures,
-    triangleCount: number,
+    count: number,
 ): void {
     gl.clearColor(0.0, 0.0, 0.0, 0.0);
     gl.clear(gl.COLOR_BUFFER_BIT);
@@ -282,16 +283,16 @@ export function draw(
 
     gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER, buf.index);
 
-    gl.drawElements(gl.TRIANGLES, triangleCount * 3, gl.UNSIGNED_SHORT, 0);
+    gl.drawElements(gl.TRIANGLES, count, gl.UNSIGNED_SHORT, 0);
 }
 
 /** @returns out */
-export function makeViewMat(out: mat3, textureExtent: v2): mat3 {
+export function makeViewMat(out: mat3, textureExtent: vec2): mat3 {
     return mat3.fromScaling(out, textureExtent);
 }
 
 /** @returns out */
-export function makeProjMat(out: mat3, textureExtent: v2): mat3 {
+export function makeProjMat(out: mat3, textureExtent: vec2): mat3 {
     mat3.fromTranslation(out, [-1, -1]);
     mat3.scale(out, out, [2 / textureExtent[0], 2 / textureExtent[1]]);
     return out;

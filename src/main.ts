@@ -1,28 +1,22 @@
 import "../style.css";
-import {
-    createFramebuffer,
-    createTexture,
-    v2,
-    v3,
-    v4,
-} from "./renderpass/shared";
+import { createFramebuffer, createTexture } from "./renderpass/shared";
 import * as rp_paint from "./renderpass/paint";
 import * as rp_present from "./renderpass/present";
-import { mat3, mat4, vec2 } from "gl-matrix";
+import { vec2, vec3, mat3, mat4 } from "gl-matrix";
 
 const settings = {
-    paintExtent: [1024, 1024] as v2,
+    paintExtent: [1024, 1024] as vec2,
 
     viewScale: 1.0,
     viewRotation: 0.0,
-    viewTranslation: [0, 0] as v2,
+    viewTranslation: [0, 0] as vec2,
 
-    brushColor: [1.0, 0.0, 0.0] as v3,
+    brushColor: [1.0, 0.0, 0.0] as vec3,
     brushFlow: 1.0,
     brushSize: 24.0,
     brushSoftness: 0.8,
 
-    pointerPos: [NaN, NaN] as v2,
+    pointerPos: [NaN, NaN] as vec2,
     pointerDown: false,
     pointerOver: false,
 
@@ -60,7 +54,6 @@ type Context = {
 
 function main(): void {
     const gl = getWebGl();
-    setupCanvas(gl);
     setupUserInputs(gl.canvas as HTMLCanvasElement);
     const ctx = setupContext(gl);
 
@@ -87,21 +80,9 @@ function main(): void {
 
 function getWebGl(): WebGLRenderingContext {
     const canvas = document.querySelector("#canvas") as HTMLCanvasElement;
+
     canvas.width = canvas.parentElement!.clientWidth;
     canvas.height = canvas.parentElement!.clientHeight;
-
-    const gl = canvas.getContext("webgl")!;
-    if (!gl) {
-        alert(
-            "Unable to initialize WebGL context. Your browser or machine may not support it",
-        );
-        throw new Error("unable to initialize webgl context");
-    }
-    return gl;
-}
-
-function setupCanvas(gl: WebGLRenderingContext) {
-    const canvas = gl.canvas as HTMLCanvasElement;
 
     window.addEventListener("resize", () => {
         settings.idle = false;
@@ -110,6 +91,13 @@ function setupCanvas(gl: WebGLRenderingContext) {
         canvas.height = canvas.parentElement!.clientHeight;
     });
 
+    const gl = canvas.getContext("webgl")!;
+    if (!gl) {
+        alert(
+            "Unable to initialize WebGL context. Your browser or machine may not support it",
+        );
+        throw new Error("unable to initialize webgl context");
+    }
     return gl;
 }
 
@@ -134,16 +122,14 @@ function setupContext(gl: WebGLRenderingContext): Context {
     paint.program = rp_paint.createProgram(gl);
     paint.locations = rp_paint.getLocations(gl, paint.program);
     paint.attributes = {
-        index: [
-            [0, 1, 2],
-            [2, 3, 0],
-        ],
-        uv: [
-            [0.0, 0.0],
-            [0.0, 1.0],
-            [1.0, 1.0],
-            [1.0, 0.0],
-        ],
+        // prettier-ignore
+        index: [0, 1, 2,
+                2, 3, 0],
+        // prettier-ignore
+        uv: [0.0, 0.0,
+             0.0, 1.0,
+             1.0, 1.0,
+             1.0, 0.0],
     };
     paint.buffers = rp_paint.updateBuffers(gl, paint.attributes, null);
 
@@ -151,22 +137,19 @@ function setupContext(gl: WebGLRenderingContext): Context {
     present.program = rp_present.createProgram(gl);
     present.locations = rp_present.getLocations(gl, present.program);
     present.attributes = {
-        index: [
-            [0, 1, 2],
-            [2, 3, 0],
-        ],
-        pos: [
-            [0.0, 0.0, 0.0],
-            [0.0, h, 0.0],
-            [w, h, 0.0],
-            [w, 0.0, 0.0],
-        ],
-        uv: [
-            [0.0, 0.0],
-            [0.0, 1.0],
-            [1.0, 1.0],
-            [1.0, 0.0],
-        ],
+        // prettier-ignore
+        index: [0, 1, 2,
+                2, 3, 0],
+        // prettier-ignore
+        pos: [0.0, 0.0, 0.0,
+              0.0,   h, 0.0,
+                w,   h, 0.0,
+                w, 0.0, 0.0],
+        // prettier-ignore
+        uv: [0.0, 0.0,
+             0.0, 1.0,
+             1.0, 1.0,
+             1.0, 0.0],
     };
     present.buffers = rp_present.updateBuffers(gl, present.attributes, null);
 
@@ -188,7 +171,7 @@ function updateUniforms(
             proj: mat4.create(),
         };
     }
-    const canvasExtent = [gl.canvas.width, gl.canvas.height] as v2;
+    const canvasExtent = [gl.canvas.width, gl.canvas.height] as vec2;
     rp_present.makeViewMat(
         present.uniforms.view,
         settings.viewScale,
@@ -209,10 +192,9 @@ function updateUniforms(
         paint.uniforms = {
             view: mat3.create(),
             proj: mat3.create(),
-            mouse_pos: [
-                [-1, -1],
-                [-1, -1],
-            ],
+            // prettier-ignore
+            mouse_pos: [-1, -1,
+                        -1, -1],
             mouse_offset_to_brush_uv: mat3.create(),
             brush_color: [0, 0, 0],
             brush_flow: 0,
@@ -223,18 +205,18 @@ function updateUniforms(
     rp_paint.makeViewMat(paint.uniforms.view, settings.paintExtent);
     rp_paint.makeProjMat(paint.uniforms.proj, settings.paintExtent);
 
-    ctx.paint.uniforms.mouse_pos[0][0] = ctx.paint.uniforms.mouse_pos[1][0];
-    ctx.paint.uniforms.mouse_pos[0][1] = ctx.paint.uniforms.mouse_pos[1][1];
+    ctx.paint.uniforms.mouse_pos[0] = ctx.paint.uniforms.mouse_pos[2];
+    ctx.paint.uniforms.mouse_pos[1] = ctx.paint.uniforms.mouse_pos[3];
 
-    vec2.transformMat3(
-        ctx.paint.uniforms.mouse_pos[1],
-        settings.pointerPos,
-        ctx.mouse.viewToTexel,
-    );
+    const tmp: vec2 = [-1, -1];
+    vec2.transformMat3(tmp, settings.pointerPos, ctx.mouse.viewToTexel);
 
-    if (isNaN(ctx.paint.uniforms.mouse_pos[0][0])) {
-        ctx.paint.uniforms.mouse_pos[0][0] = ctx.paint.uniforms.mouse_pos[1][0];
-        ctx.paint.uniforms.mouse_pos[0][1] = ctx.paint.uniforms.mouse_pos[1][1];
+    ctx.paint.uniforms.mouse_pos[2] = tmp[0];
+    ctx.paint.uniforms.mouse_pos[3] = tmp[1];
+
+    if (isNaN(ctx.paint.uniforms.mouse_pos[0])) {
+        ctx.paint.uniforms.mouse_pos[0] = ctx.paint.uniforms.mouse_pos[2];
+        ctx.paint.uniforms.mouse_pos[1] = ctx.paint.uniforms.mouse_pos[3];
     }
 
     rp_paint.updateUniforms(gl, ctx.paint.program, ctx.paint.locations, {
