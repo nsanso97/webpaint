@@ -3,6 +3,8 @@ import { createFramebuffer, createTexture } from "./renderpass/shared";
 import * as rp_paint from "./renderpass/paint";
 import * as rp_present from "./renderpass/present";
 import { vec2, vec3, mat3, mat4 } from "gl-matrix";
+import { CameraOrtho2D } from "./controls/camera";
+import { Brush } from "./controls/brush";
 
 const settings = {
     paintExtent: [1024, 1024] as vec2,
@@ -46,16 +48,33 @@ type Context = {
         attributes: rp_present.Attributes;
         uniforms: rp_present.Uniforms;
     };
-
-    mouse: {
-        viewToTexel: mat3;
-    };
 };
 
 function main(): void {
     const gl = getWebGl();
-    setupUserInputs(gl.canvas as HTMLCanvasElement);
-    const ctx = setupContext(gl);
+
+    const camera = new CameraOrtho2D();
+    // prettier-ignore
+    camera.bind({
+        viewport: gl.canvas as HTMLCanvasElement,
+        translation_x_input: document.querySelector("#translation-x") as HTMLInputElement,
+        translation_y_input: document.querySelector("#translation-y") as HTMLInputElement,
+        rotation_input: document.querySelector("#rotation") as HTMLInputElement,
+        scale_input: document.querySelector("#scale") as HTMLInputElement,
+    });
+
+    const brush = new Brush();
+    // prettier-ignore
+    brush.bind({
+        viewport: gl.canvas as HTMLCanvasElement,
+        color_input: document.querySelector("#brush-color") as HTMLInputElement,
+        // alpha_input: document.querySelector("#brush-alpha") as HTMLInputElement,
+        flow_input: document.querySelector("#brush-flow") as HTMLInputElement,
+        size_input: document.querySelector("#brush-size") as HTMLInputElement,
+        softness_input: document.querySelector("#brush-softness") as HTMLInputElement,
+    });
+
+    const ctx = setupContext(gl, camera, brush);
 
     let last_frame_ms = 0;
     function render(current_frame_ms: number) {
@@ -243,155 +262,6 @@ function updateUniforms(
         present.uniforms,
     );
     rp_paint.updateUniforms(gl, paint.program, paint.locations, paint.uniforms);
-}
-
-function makeViewToTexel(out: mat3, texelToView: mat4): mat3 {
-    if (!out) out = mat3.create();
-
-    //copy by dropping Z coordinates
-    out[0] = texelToView[0];
-    out[1] = texelToView[1];
-    out[2] = texelToView[3];
-
-    out[3] = texelToView[4];
-    out[4] = texelToView[5];
-    out[5] = texelToView[7];
-
-    out[6] = texelToView[12];
-    out[7] = texelToView[13];
-    out[8] = texelToView[15];
-
-    mat3.invert(out, out);
-    return out;
-}
-
-function setupUserInputs(canvas: HTMLCanvasElement) {
-    canvas.addEventListener("mouseup", (event) => event.preventDefault());
-    canvas.addEventListener("mousedown", (event) => event.preventDefault());
-    canvas.addEventListener("pointerover", (_event) => {
-        settings.idle = false;
-        settings.pointerOver = true;
-    });
-    canvas.addEventListener("pointerout", (_event) => {
-        settings.idle = false;
-        settings.pointerOver = false;
-        settings.pointerDown = false;
-        settings.pointerPos.fill(NaN);
-    });
-    canvas.addEventListener("pointerdown", (_event) => {
-        settings.idle = false;
-        settings.pointerDown = true;
-    });
-    canvas.addEventListener("pointerup", (_event) => {
-        settings.idle = false;
-        settings.pointerDown = false;
-    });
-    canvas.addEventListener("pointermove", (event) => {
-        settings.idle = false;
-        const e = event as PointerEvent;
-
-        const rect = canvas.getBoundingClientRect();
-        settings.pointerPos[0] = e.clientX - rect.x;
-        settings.pointerPos[1] = e.clientY - rect.y;
-    });
-
-    const inputX = document.querySelector("#translation-x") as HTMLInputElement;
-    const inputY = document.querySelector("#translation-y") as HTMLInputElement;
-    const inputScale = document.querySelector("#scale") as HTMLInputElement;
-    const inputRotation = document.querySelector(
-        "#rotation",
-    ) as HTMLInputElement;
-
-    inputX.min = (-settings.paintExtent[0] / 2).toString();
-    inputX.max = (settings.paintExtent[0] / 2).toString();
-    inputX.value = settings.viewTranslation[0].toString();
-
-    inputY.min = (-settings.paintExtent[1] / 2).toString();
-    inputY.max = (settings.paintExtent[1] / 2).toString();
-    inputX.value = settings.viewTranslation[1].toString();
-
-    inputScale.value = (
-        Math.log(settings.viewScale) / Math.log(settings.viewScaleExpBase) +
-        1
-    ).toString();
-    inputRotation.value = (settings.viewRotation / Math.PI).toString();
-
-    inputX.addEventListener("input", (event) => {
-        settings.idle = false;
-        const e = event as InputEvent;
-        const t = e.target as HTMLInputElement;
-        settings.viewTranslation[0] = +t.value;
-    });
-    inputY.addEventListener("input", (event) => {
-        settings.idle = false;
-        const e = event as InputEvent;
-        const t = e.target as HTMLInputElement;
-        settings.viewTranslation[1] = +t.value;
-    });
-    inputScale.addEventListener("input", (event) => {
-        settings.idle = false;
-        const e = event as InputEvent;
-        const t = e.target as HTMLInputElement;
-        settings.viewScale = Math.pow(settings.viewScaleExpBase, +t.value - 1);
-    });
-    inputRotation.addEventListener("input", (event) => {
-        settings.idle = false;
-        const e = event as InputEvent;
-        const t = e.target as HTMLInputElement;
-        settings.viewRotation = +t.value * Math.PI;
-    });
-
-    const inputBrushColor = document.querySelector(
-        "#brush-color",
-    ) as HTMLInputElement;
-    const inputBrushFlow = document.querySelector(
-        "#brush-flow",
-    ) as HTMLInputElement;
-    const inputBrushSize = document.querySelector(
-        "#brush-size",
-    ) as HTMLInputElement;
-    const inputBrushSoftness = document.querySelector(
-        "#brush-softness",
-    ) as HTMLInputElement;
-
-    inputBrushColor.value = (settings.brushColor as number[])
-        .map((c) => Math.floor(c * 0xff))
-        .slice(0, 3)
-        .reduce((r, c) => r + c.toString(16).padStart(2, "0"), "#");
-    inputBrushSize.value = settings.brushSize.toString();
-    inputBrushFlow.value = settings.brushFlow.toString();
-    inputBrushSoftness.value = settings.brushSoftness.toString();
-
-    inputBrushColor.addEventListener("input", (event) => {
-        settings.idle = false;
-        const e = event as InputEvent;
-        const t = e.target as HTMLInputElement;
-
-        settings.brushColor[0] = parseInt(t.value.slice(1, 3), 16) / 0xff;
-        settings.brushColor[1] = parseInt(t.value.slice(3, 5), 16) / 0xff;
-        settings.brushColor[2] = parseInt(t.value.slice(5, 7), 16) / 0xff;
-    });
-
-    inputBrushFlow.addEventListener("input", (event) => {
-        settings.idle = false;
-        const e = event as InputEvent;
-        const t = e.target as HTMLInputElement;
-        settings.brushFlow = +t.value;
-    });
-
-    inputBrushSize.addEventListener("input", (event) => {
-        settings.idle = false;
-        const e = event as InputEvent;
-        const t = e.target as HTMLInputElement;
-        settings.brushSize = +t.value;
-    });
-
-    inputBrushSoftness.addEventListener("input", (event) => {
-        settings.idle = false;
-        const e = event as InputEvent;
-        const t = e.target as HTMLInputElement;
-        settings.brushSoftness = +t.value;
-    });
 }
 
 function draw(gl: WebGLRenderingContext, ctx: Context) {
