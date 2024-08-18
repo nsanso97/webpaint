@@ -1,6 +1,7 @@
 import { vec2, vec3, mat4 } from "gl-matrix";
-import { TBuffers, TLocations, loadShader } from "./shared";
+import { TBuffers, TLocations, createShader } from "./shared";
 import { vec2v, vec3v } from "../utils/typedefs";
+import { Camera } from "../controls/camera";
 
 const vert_src = `
     attribute vec4 a_pos;
@@ -34,30 +35,24 @@ export type Attributes = {
 };
 
 export type Uniforms = {
-    /**
-     * Transform from texel(0:Wt,0:Ht) to view(0:Wv,0:Hv)
-     *
-     * The view's Wv and Hv are equal to the canvas' Wc and Hc
-     * The transformation can scale, rotate and translate the texel
-     * space freely, meaning that the bounds of the 2 spaces do not
-     * need to match, but it should keep the correct texel aspect ratio
-     */
-    view: mat4;
-    /** Transform from view(0:Wv,0:Hv) to clip(-1:1,-1:1) */
-    proj: mat4;
+    camera: Camera;
 };
 
 export type Textures = {
     sampler: WebGLTexture;
 };
 
-export type Locations = TLocations<Attributes, Uniforms, Textures>;
+export type Locations = TLocations<
+    Attributes,
+    { camera_view: mat4; camera_proj: mat4 },
+    Textures
+>;
 export type Buffers = TBuffers<Attributes>;
 export type Program = WebGLProgram;
 
 export function createProgram(gl: WebGLRenderingContext) {
-    const vert = loadShader(gl, "vert2", gl.VERTEX_SHADER, vert_src);
-    const frag = loadShader(gl, "frag2", gl.FRAGMENT_SHADER, frag_src);
+    const vert = createShader(gl, "vert2", gl.VERTEX_SHADER, vert_src);
+    const frag = createShader(gl, "frag2", gl.FRAGMENT_SHADER, frag_src);
 
     const program = gl.createProgram()!;
     gl.attachShader(program, vert);
@@ -83,8 +78,8 @@ export function getLocations(
             uv: gl.getAttribLocation(program, "a_uv")!,
         },
         uniforms: {
-            view: gl.getUniformLocation(program, "u_view")!,
-            proj: gl.getUniformLocation(program, "u_proj")!,
+            camera_view: gl.getUniformLocation(program, "u_view")!,
+            camera_proj: gl.getUniformLocation(program, "u_proj")!,
         },
         textures: {
             sampler: gl.getUniformLocation(program, "u_sampler")!,

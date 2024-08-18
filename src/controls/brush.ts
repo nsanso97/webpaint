@@ -19,8 +19,8 @@ export type StrokePoint = {
     // r: number;
     // g: number;
     // b: number;
-    // a: number;
     //
+    // opacity: number;
     // flow: number;
     // size: number;
     // softness: number;
@@ -29,7 +29,7 @@ export type StrokePoint = {
 export type BrushBindings = {
     viewport?: HTMLElement;
     color_input?: HTMLInputElement;
-    alpha_input?: HTMLInputElement;
+    opacity_input?: HTMLInputElement;
     flow_input?: HTMLInputElement;
     size_input?: HTMLInputElement;
     softness_input?: HTMLInputElement;
@@ -39,8 +39,8 @@ export class Brush {
     _r: number;
     _g: number;
     _b: number;
-    _a: number;
 
+    _opacity: number;
     _flow: number;
     _size: number;
     _softness: number;
@@ -62,7 +62,7 @@ export class Brush {
         this._r = 0;
         this._g = 0;
         this._b = 0;
-        this._a = 1;
+        this._opacity = 1;
 
         this._flow = 1;
         this._size = 12;
@@ -88,8 +88,8 @@ export class Brush {
     get b(): number {
         return this._b;
     }
-    get a(): number {
-        return this._a;
+    get opacity(): number {
+        return this._opacity;
     }
     get flow(): number {
         return this._flow;
@@ -103,10 +103,10 @@ export class Brush {
     get stroke_start(): StrokePoint | null {
         return this._stroke_start;
     }
-    get pointer_over(): boolean {
+    get is_pointer_over(): boolean {
         return this._pointer_over;
     }
-    get pointer_down(): boolean {
+    get is_pointer_down(): boolean {
         return this._pointer_down;
     }
     get is_enabled(): boolean {
@@ -128,43 +128,43 @@ export class Brush {
         );
     }
 
-    set r(r: number) {
+    set_r(r: number) {
         this._r = r;
         if (this._bindings.color_input) {
             this._bindings.color_input.value = this.color_to_css();
         }
     }
-    set g(g: number) {
+    set_g(g: number) {
         this._g = g;
         if (this._bindings.color_input) {
             this._bindings.color_input.value = this.color_to_css();
         }
     }
-    set b(b: number) {
+    set_b(b: number) {
         this._b = b;
         if (this._bindings.color_input) {
             this._bindings.color_input.value = this.color_to_css();
         }
     }
-    set a(a: number) {
-        this._a = a;
-        if (this._bindings.alpha_input) {
-            this._bindings.alpha_input.value = this._a.toString();
+    set_opacity(opacity: number) {
+        this._opacity = opacity;
+        if (this._bindings.opacity_input) {
+            this._bindings.opacity_input.value = this._opacity.toString();
         }
     }
-    set flow(flow: number) {
+    set_flow(flow: number) {
         this._flow = flow;
         if (this._bindings.flow_input) {
             this._bindings.flow_input.value = this._flow.toString();
         }
     }
-    set size(size: number) {
+    set_size(size: number) {
         this._size = size;
         if (this._bindings.size_input) {
             this._bindings.size_input.value = this._size.toString();
         }
     }
-    set softness(softness: number) {
+    set_softness(softness: number) {
         this._softness = softness;
         if (this._bindings.softness_input) {
             this._bindings.softness_input.value = this._softness.toString();
@@ -239,7 +239,7 @@ export class Brush {
         const {
             viewport,
             color_input,
-            alpha_input,
+            opacity_input,
             flow_input,
             size_input,
             softness_input,
@@ -311,15 +311,15 @@ export class Brush {
                 this._b = parseInt(t.value.slice(5, 7), 16) / 0xff;
 
                 // trigger side-effects
-                this.r = this.r; // one is enough for colors
+                this.set_r(this.r); // one is enough for colors
             });
         }
 
-        if (alpha_input) {
-            alpha_input.addEventListener("input", (event) => {
+        if (opacity_input) {
+            opacity_input.addEventListener("input", (event) => {
                 const e = event as InputEvent;
                 const t = e.target as HTMLInputElement;
-                this.a = +t.value;
+                this.set_opacity(+t.value);
             });
         }
 
@@ -327,7 +327,7 @@ export class Brush {
             flow_input.addEventListener("input", (event) => {
                 const e = event as InputEvent;
                 const t = e.target as HTMLInputElement;
-                this.flow = +t.value;
+                this.set_flow(+t.value);
             });
         }
 
@@ -335,7 +335,7 @@ export class Brush {
             size_input.addEventListener("input", (event) => {
                 const e = event as InputEvent;
                 const t = e.target as HTMLInputElement;
-                this.size = +t.value;
+                this.set_size(+t.value);
             });
         }
 
@@ -343,14 +343,14 @@ export class Brush {
             softness_input.addEventListener("input", (event) => {
                 const e = event as InputEvent;
                 const t = e.target as HTMLInputElement;
-                this.softness = +t.value;
+                this.set_softness(+t.value);
             });
         }
 
         // trigger side-effects
-        this.r = this.r; // one is enough for colors
-        this.flow = this.flow;
-        this.size = this.size;
-        this.softness = this.softness;
+        this.set_r(this.r); // one is enough for colors
+        this.set_flow(this.flow);
+        this.set_size(this.size);
+        this.set_softness(this.softness);
     }
 }

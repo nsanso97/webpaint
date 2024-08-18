@@ -37,7 +37,7 @@ export type CameraBindings = {
     translation_y_input?: HTMLInputElement;
 };
 
-export class CameraOrtho2D {
+export class Camera {
     private _proj: mat4;
     private _proj_dirty: boolean;
 
@@ -141,7 +141,7 @@ export class CameraOrtho2D {
         return this._bounds;
     }
 
-    set bounds(bounds: CameraBounds) {
+    set_bounds(bounds: CameraBounds) {
         this._bounds = bounds;
         this._proj_dirty = true;
     }
@@ -150,7 +150,7 @@ export class CameraOrtho2D {
         return this._translation;
     }
 
-    set translation(translation: vec2) {
+    set_translation(translation: vec2) {
         this._translation[0] = translation[0];
         this._translation[1] = translation[1];
 
@@ -171,14 +171,14 @@ export class CameraOrtho2D {
         this._translation[1] += translation[1];
 
         // call setter for side-effects
-        this.translation = this._translation;
+        this.set_translation(this._translation);
     }
 
     get rotation(): number {
         return this._rotation;
     }
 
-    set rotation(rotation: number) {
+    set_rotation(rotation: number) {
         this._rotation = rotation;
 
         if (this._bindings.rotation_input) {
@@ -189,14 +189,14 @@ export class CameraOrtho2D {
     }
 
     rotate(rotation: number) {
-        this.rotation += rotation;
+        this.set_rotation(this._rotation + rotation);
     }
 
     get scale(): number {
         return this._scale;
     }
 
-    set scale(scale: number) {
+    set_scale(scale: number) {
         this._scale = scale;
 
         if (this._bindings.scale_input) {
@@ -207,7 +207,7 @@ export class CameraOrtho2D {
     }
 
     rescale(scale: number) {
-        this.scale *= scale;
+        this.set_scale(this._scale * scale);
     }
 
     /**
@@ -337,7 +337,7 @@ export class CameraOrtho2D {
             scale_input.addEventListener("input", (event) => {
                 const e = event as InputEvent;
                 const t = e.target as HTMLInputElement;
-                this.scale = +t.value;
+                this.set_scale(+t.value);
                 // this.scale = Math.pow(
                 //     settings.viewScaleExpBase,
                 //     +t.value - 1,
@@ -349,7 +349,7 @@ export class CameraOrtho2D {
             rotation_input.addEventListener("input", (event) => {
                 const e = event as InputEvent;
                 const t = e.target as HTMLInputElement;
-                this.rotation = +t.value * Math.PI;
+                this.set_rotation(+t.value * Math.PI);
             });
         }
 
@@ -359,7 +359,7 @@ export class CameraOrtho2D {
                 const t = e.target as HTMLInputElement;
                 this.translation[0] = +t.value;
                 // trigger side-effects
-                this.translation = this.translation;
+                this.set_translation(this.translation);
             });
         }
 
@@ -369,13 +369,13 @@ export class CameraOrtho2D {
                 const t = e.target as HTMLInputElement;
                 this.translation[1] = +t.value;
                 // trigger side-effects
-                this.translation = this.translation;
+                this.set_translation(this.translation);
             });
         }
 
         // trigger side-effects to sync input elements values
-        this.scale = this.scale;
-        this.rotation = this.rotation;
-        this.translation = this.translation;
+        this.set_scale(this.scale);
+        this.set_rotation(this.rotation);
+        this.set_translation(this.translation);
     }
 }

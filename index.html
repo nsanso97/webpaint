@@ -4,16 +4,21 @@
         <meta charset="UTF-8" />
         <link rel="icon" type="image/svg+xml" href="/vite.svg" />
         <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-        <title>Vite App</title>
+        <title>Web Paint</title>
         <script type="module" src="/src/main.ts" defer></script>
     </head>
     <body class="h-screen">
         <header
             id="header"
-            class="bg h-12 w-full border-b bg-neutral-100"
-        ></header>
+            class="bg flex h-12 w-full border-b bg-neutral-100 p-2"
+        >
+            <input id="file" type="file" class="" accept="image/*" />
+        </header>
         <div class="flex w-full flex-1 flex-row overflow-clip">
-            <div id="tools-left" class="bg flex w-64 flex-col gap-y-1 border-r">
+            <div
+                id="tools-left"
+                class="bg flex w-64 flex-col gap-y-1 border-r p-2"
+            >
                 <label>
                     x
                     <input
@@ -64,11 +69,23 @@
             </div>
             <div
                 id="tools-right"
-                class="bg flex w-64 flex-col gap-y-1 border-l"
+                class="bg flex w-64 flex-col gap-y-1 border-l p-2"
             >
                 <label>
                     brush color
                     <input type="color" id="brush-color" value="#000000" />
+                </label>
+
+                <label>
+                    brush opacity
+                    <input
+                        type="range"
+                        id="brush-opacity"
+                        min="0"
+                        max="1"
+                        step="0.05"
+                        value="1"
+                    />
                 </label>
 
                 <label>

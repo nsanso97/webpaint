@@ -1,6 +1,7 @@
 import { vec2, vec3, mat3 } from "gl-matrix";
-import { TBuffers, TLocations, loadShader } from "./shared";
+import { TBuffers, TLocations, createShader } from "./shared";
 import { vec2v, vec3v } from "../utils/typedefs";
+import { Brush, StrokePoint } from "../controls/brush";
 
 const vert_src = `
     #define N_MOUSE_POS 2
@@ -114,18 +115,9 @@ export type Uniforms = {
     view: mat3;
     /** Transform from texture(0:W,0:H) to clip(-1:1,-1:1) */
     proj: mat3;
-    /** Mouse position in texure space(0:W,0:H) */
-    mouse_pos: vec2v;
-    /** Transform from the 2D vector offset from the mouse
-     * position in texture space to the position in brush uv
-     * space used to sample to brush Signed Distance Field (SDF) */
-    mouse_offset_to_brush_uv: mat3;
-    /** RGBA premuliplied */
-    brush_color: vec3;
-    /** inverse of the time in seconds needed to reach full opacity */
-    brush_flow: number;
-    /** Range 0:1, with 0 being hardest and 1 being softest */
-    brush_softness: number;
+
+    brush: Brush;
+
     /** Delta time from last frame */
     delta_ms: number;
 };
@@ -134,13 +126,30 @@ export type Textures = {
     sampler: WebGLTexture;
 };
 
-export type Locations = TLocations<Attributes, Uniforms, Textures>;
+export type Locations = TLocations<
+    Attributes,
+    {
+        view: mat3;
+        proj: mat3;
+        delta_ms: number;
+
+        brush_rgb: vec3;
+        brush_opacity: number;
+        brush_flow: number;
+        brush_size: number;
+        brush_softness: number;
+
+        brush_stroke_start: StrokePoint;
+        brush_stroke: StrokePoint[];
+    },
+    Textures
+>;
 export type Buffers = TBuffers<Attributes>;
 export type Program = WebGLProgram;
 
 export function createProgram(gl: WebGLRenderingContext) {
-    const vert = loadShader(gl, "vert", gl.VERTEX_SHADER, vert_src);
-    const frag = loadShader(gl, "frag", gl.FRAGMENT_SHADER, frag_src);
+    const vert = createShader(gl, "vert", gl.VERTEX_SHADER, vert_src);
+    const frag = createShader(gl, "frag", gl.FRAGMENT_SHADER, frag_src);
 
     const program = gl.createProgram()!;
     gl.attachShader(program, vert);
@@ -167,15 +176,19 @@ export function getLocations(
         uniforms: {
             view: gl.getUniformLocation(program, "u_view")!,
             proj: gl.getUniformLocation(program, "u_proj")!,
-            mouse_pos: gl.getUniformLocation(program, "u_mouse_pos")!,
-            mouse_offset_to_brush_uv: gl.getUniformLocation(
-                program,
-                "u_mouse_offset_to_brush_uv",
-            )!,
-            brush_color: gl.getUniformLocation(program, "u_brush_color")!,
-            brush_flow: gl.getUniformLocation(program, "u_brush_flow")!,
-            brush_softness: gl.getUniformLocation(program, "u_brush_softness")!,
             delta_ms: gl.getUniformLocation(program, "u_delta_ms")!,
+
+            brush_rgb: gl.getUniformLocation(program, "u_brush_rgb")!,
+            brush_opacity: gl.getUniformLocation(program, "u_brush_opacity")!,
+            brush_flow: gl.getUniformLocation(program, "u_brush_flow")!,
+            brush_size: gl.getUniformLocation(program, "u_brush_size")!,
+            brush_softness: gl.getUniformLocation(program, "u_brush_softness")!,
+
+            brush_stroke_start: gl.getUniformLocation(
+                program,
+                "u_brush_stroke_start",
+            )!,
+            brush_stroke: gl.getUniformLocation(program, "u_brush_stroke")!,
         },
         textures: {
             sampler: gl.getUniformLocation(program, "u_sampler")!,
