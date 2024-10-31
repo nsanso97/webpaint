@@ -8,7 +8,6 @@ import shadersrc_view_frag from "../shaders/view.frag?raw";
 export class View {
     gl: WebGL2RenderingContext;
     camera: Camera;
-    image: WebGLTexture;
     framebuffer: WebGLFramebuffer;
 
     program: WebGLProgram;
@@ -28,16 +27,13 @@ export class View {
     constructor(
         gl: WebGL2RenderingContext,
         camera: Camera,
-        image: WebGLTexture,
         framebuffer: WebGLFramebuffer,
     ) {
         assert(!!gl);
         assert(!!camera);
-        assert(!!image);
 
         this.gl = gl;
         this.camera = camera;
-        this.image = image;
         this.framebuffer = framebuffer;
 
         // prettier-ignore
