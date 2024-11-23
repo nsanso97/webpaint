@@ -1,9 +1,9 @@
 import { Camera } from "../controls/camera";
-import { createProgram, createShader } from "../renderpass/shared";
 import { assert } from "../utils/assert";
 
-import shadersrc_view_vert from "../shaders/view.vert?raw";
-import shadersrc_view_frag from "../shaders/view.frag?raw";
+import view_vert_src from "../shaders/view.vert?raw";
+import view_frag_src from "../shaders/view.frag?raw";
+import { Program, Shader } from "../shaders/shader";
 
 export class View {
     gl: WebGL2RenderingContext;
@@ -36,26 +36,34 @@ export class View {
         this.camera = camera;
         this.framebuffer = framebuffer;
 
-        // prettier-ignore
-        const shader_view_vert = createShader(gl, "view.vert", gl.VERTEX_SHADER, shadersrc_view_vert);
-        // prettier-ignore
-        const shader_view_frag = createShader(gl, "view.frag", gl.FRAGMENT_SHADER, shadersrc_view_frag);
+        const view_vert = new Shader(
+            gl,
+            "view.vert",
+            gl.VERTEX_SHADER,
+            view_vert_src,
+            { attributes: ["a_uv"], uniforms: ["u_wh", "u_image_bounds"] },
+        );
+        const view_frag = new Shader(
+            gl,
+            "view.frag",
+            gl.FRAGMENT_SHADER,
+            view_frag_src,
+            {
+                attributes: [],
+                uniforms: [
+                    "u_wh",
+                    "u_image_bounds",
+                    "u_image",
+                    "u_border_size",
+                    "u_checkerboard_span",
+                ],
+            },
+        );
 
-        this.program = createProgram(gl, shader_view_vert, shader_view_frag);
+        this.program = new Program(gl, [view_vert, view_frag]);
 
-        gl.deleteShader(shader_view_vert);
-        gl.deleteShader(shader_view_frag);
-
-        // prettier-ignore
-        this.locations = {
-            a_uv: gl.getAttribLocation(this.program, "a_uv"),
-
-            u_wh: gl.getUniformLocation(this.program, "u_wh")!,
-            u_image_bounds: gl.getUniformLocation(this.program, "u_image_bounds")!,
-            u_image: gl.getUniformLocation(this.program, "u_image")!,
-            u_border_size: gl.getUniformLocation(this.program, "u_border_size")!,
-            u_checkerboard_span: gl.getUniformLocation(this.program, "u_checkerboard_span")!,
-        };
+        view_vert.delete();
+        view_frag.delete();
 
         this.buf_index = gl.createBuffer()!;
         gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER, this.buf_index);

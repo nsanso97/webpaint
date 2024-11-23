@@ -4,15 +4,16 @@ export type ShaderType = WebGLRenderingContextBase[
     | "VERTEX_SHADER"
     | "FRAGMENT_SHADER"];
 
-export class Shader<
-    Attributes extends readonly string[],
-    Uniforms extends readonly string[],
-> {
+export type LocationKeys = {
+    attributes: readonly string[];
+    uniforms: readonly string[];
+};
+
+export class Shader {
     gl: WebGL2RenderingContext;
     name: string;
     type: ShaderType;
-    attributes: Attributes;
-    uniforms: Uniforms;
+    locations: LocationKeys;
     shader: WebGLShader | null;
 
     constructor(
@@ -20,7 +21,7 @@ export class Shader<
         name: string,
         type: ShaderType,
         source: string,
-        locations: { attributes: Attributes; uniforms: Uniforms },
+        locations: LocationKeys,
     ) {
         this.gl = gl;
         this.name = name;
@@ -38,8 +39,7 @@ export class Shader<
          * after the shader program linking.
          * This is because that is the earliest time in which webgl makes them available.
          */
-        this.attributes = locations.attributes;
-        this.uniforms = locations.uniforms;
+        this.locations = locations;
 
         const shader = gl.createShader(this.type);
         if (!shader) {
@@ -69,11 +69,80 @@ export class Shader<
     }
 }
 
-export class ShaderProgram<
-    Attributes extends readonly string[],
-    Uniforms extends readonly string[],
-> {
-	constructor(
-        gl: WebGL2RenderingContext,
-		...shaders: Shader<>[]
+export type Locations = {
+    attributes: { [key: string]: number };
+    uniforms: { [key: string]: WebGLUniformLocation };
+};
+
+export class Program {
+    gl: WebGL2RenderingContext;
+    name: string;
+    program: WebGLProgram | null;
+    locations: Locations;
+
+    constructor(gl: WebGL2RenderingContext, shaders: Shader[]) {
+        this.gl = gl;
+
+        this.name = "";
+        for (const s of shaders) {
+            this.name += "+" + s.name;
+        }
+
+        for (const s of shaders) {
+            if (!s.shader)
+                throw new Error(
+                    `Program: shader "${s.name}" already deleted (${this.name})`,
+                );
+        }
+
+        const p = gl.createProgram();
+        if (!p) {
+            throw new Error(`Program: gl.createProgram failed (${this.name})`);
+        }
+
+        for (const s of shaders) {
+            gl.attachShader(p, s.shader!);
+        }
+        gl.linkProgram(p);
+        if (!gl.getProgramParameter(p, gl.LINK_STATUS)) {
+            throw new Error(
+                `Program: unable to link ${this.name}.\n` +
+                    `Info: ${gl.getProgramInfoLog(p)}`,
+            );
+        }
+        this.program = p;
+
+        this.locations = { attributes: {}, uniforms: {} };
+
+        for (const s of shaders) {
+            for (const k of s.locations.attributes) {
+                const a = gl.getAttribLocation(this.program, k);
+                if (a === -1) {
+                    throw new Error(
+                        `Program: attribute ${k} (Shader ${s.name}) not found (${this.name})`,
+                    );
+                }
+                this.locations.attributes[k] = a;
+            }
+
+            for (const k of s.locations.uniforms) {
+                const u = gl.getUniformLocation(this.program, k);
+                if (!u) {
+                    throw new Error(
+                        `Program: uniform ${k} (Shader ${s.name}) not found (${this.name})`,
+                    );
+                }
+                this.locations.uniforms[k] = u;
+            }
+        }
+    }
+
+    delete() {
+        if (!this.program) {
+            throw new Error(`Program.delete: can't delete (${this.name})`);
+        }
+
+        this.gl.deleteProgram(this.program);
+        this.program = null;
+    }
 }
